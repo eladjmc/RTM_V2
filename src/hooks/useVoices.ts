@@ -6,8 +6,8 @@ export interface VoiceInfo {
 }
 
 /**
- * Hook to load available speech synthesis voices.
- * Shows all voices, defaults to saved → Zira → first English → first available.
+ * Hook to load available English speech synthesis voices.
+ * Defaults to saved → Zira → first English voice.
  */
 export function useVoices(savedVoiceName?: string) {
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
@@ -22,16 +22,11 @@ export function useVoices(savedVoiceName?: string) {
   useEffect(() => {
     const handleVoicesChanged = () => {
       const allVoices = speechSynthesis.getVoices();
+      const englishVoices = allVoices
+        .filter((v) => v.lang.startsWith('en'))
+        .sort((a, b) => a.name.localeCompare(b.name));
 
-      // Sort: English voices first, then alphabetical
-      const sorted = [...allVoices].sort((a, b) => {
-        const aEn = a.lang.startsWith('en') ? 0 : 1;
-        const bEn = b.lang.startsWith('en') ? 0 : 1;
-        if (aEn !== bEn) return aEn - bEn;
-        return a.name.localeCompare(b.name);
-      });
-
-      const voiceInfos: VoiceInfo[] = sorted.map((v) => ({
+      const voiceInfos: VoiceInfo[] = englishVoices.map((v) => ({
         voice: v,
         label: `${v.name} (${v.lang})`,
       }));
@@ -57,16 +52,7 @@ export function useVoices(savedVoiceName?: string) {
           return;
         }
 
-        // Try first English voice
-        const firstEnglish = voiceInfos.find((v) =>
-          v.voice.lang.startsWith('en')
-        );
-        if (firstEnglish) {
-          setSelectedVoice(firstEnglish.voice);
-          return;
-        }
-
-        // Fallback to first available voice
+        // Fallback to first English voice
         setSelectedVoice(voiceInfos[0].voice);
       }
     };

@@ -91,6 +91,7 @@ export function useTTS({
 
         if (voiceRef.current) {
           utterance.voice = voiceRef.current;
+          utterance.lang = voiceRef.current.lang;
         }
         utterance.rate = rateRef.current;
         utterance.volume = volumeRef.current;
