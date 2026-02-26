@@ -134,8 +134,8 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         position: 'sticky',
         top: 48,
         zIndex: (t) => t.zIndex.appBar,
-        px: { xs: 1, sm: 2 },
-        py: 1,
+        px: { xs: 0.5, sm: 2 },
+        py: { xs: 0.5, sm: 1 },
         borderBottom: 1,
         borderColor: 'divider',
         bgcolor: 'background.paper',
@@ -146,7 +146,8 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         direction="row"
         alignItems="center"
         justifyContent="center"
-        spacing={{ xs: 0.5, sm: 1 }}
+        flexWrap="wrap"
+        sx={{ gap: { xs: 0.25, sm: 1 } }}
       >
         {/* === Playback Transport === */}
         <Stack direction="row" alignItems="center" spacing={0}>
@@ -176,8 +177,8 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
                   color: 'primary.contrastText',
                   '&:hover': { bgcolor: 'primary.dark' },
                   '&.Mui-disabled': { bgcolor: 'action.disabledBackground' },
-                  width: 40,
-                  height: 40,
+                  width: { xs: 36, sm: 40 },
+                  height: { xs: 36, sm: 40 },
                 }}
               >
                 {isPlaying ? (
@@ -216,11 +217,11 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           </Tooltip>
         </Stack>
 
-        {/* === Divider === */}
-        <Box sx={{ width: '1px', height: 28, bgcolor: 'divider', mx: 0.5 }} />
+        {/* === Divider (desktop only) === */}
+        <Box sx={{ width: '1px', height: 28, bgcolor: 'divider', mx: 0.5, display: { xs: 'none', sm: 'block' } }} />
 
-        {/* === Voice Selector === */}
-        <FormControl size="small" sx={{ minWidth: 140, maxWidth: 220 }}>
+        {/* === Voice Selector (desktop only) === */}
+        <FormControl size="small" sx={{ minWidth: 140, maxWidth: 220, display: { xs: 'none', sm: 'inline-flex' } }}>
           <Select
             value={selectedVoiceName}
             onChange={handleVoiceChange}
@@ -242,7 +243,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         </FormControl>
 
         {/* === Divider === */}
-        <Box sx={{ width: '1px', height: 28, bgcolor: 'divider', mx: 0.5 }} />
+        <Box sx={{ width: '1px', height: 28, bgcolor: 'divider', mx: 0.5, display: { xs: 'none', sm: 'block' } }} />
 
         {/* === Speed Stepper === */}
         <Stack direction="row" alignItems="center" spacing={0}>
@@ -317,7 +318,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         <Box sx={{ width: '1px', height: 28, bgcolor: 'divider', mx: 0.5 }} />
 
         {/* === Volume === */}
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 120 }}>
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: { xs: 80, sm: 120 } }}>
           <Tooltip title={isMuted ? 'Unmute' : 'Mute'}>
             <IconButton onClick={onMuteToggle} size="small" aria-label="Toggle mute">
               <VolumeIcon fontSize="small" />
@@ -331,7 +332,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
             step={0.05}
             size="small"
             aria-label="Volume"
-            sx={{ width: 80 }}
+            sx={{ width: { xs: 50, sm: 80 } }}
           />
         </Stack>
       </Stack>

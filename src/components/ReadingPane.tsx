@@ -56,8 +56,10 @@ const ReadingPane: React.FC<ReadingPaneProps> = ({
         maxWidth: '960px',
         mx: 'auto',
         py: 2,
-        px: { xs: 2, sm: 3 },
+        px: { xs: 1, sm: 3 },
         userSelect: status !== 'idle' ? 'none' : 'text',
+        overflowWrap: 'break-word',
+        wordBreak: 'break-word',
       }}
     >
       {paragraphs.map((paragraph, pIndex) => {
@@ -71,7 +73,7 @@ const ReadingPane: React.FC<ReadingPaneProps> = ({
             onClick={() => onParagraphClick(pIndex)}
             sx={{
               py: 1.5,
-              px: 2,
+              px: { xs: 1, sm: 2 },
               my: 0.5,
               borderRadius: 1,
               cursor: 'pointer',
