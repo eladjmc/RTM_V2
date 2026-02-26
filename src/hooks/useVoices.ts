@@ -5,12 +5,9 @@ export interface VoiceInfo {
   label: string;
 }
 
-const PREFERRED_VOICE = 'Microsoft Zira Desktop';
-
 /**
- * Hook to load available English speech synthesis voices.
- * Returns the voice list, the selected voice, and a setter.
- * Defaults to Microsoft Zira Desktop if available.
+ * Hook to load available speech synthesis voices.
+ * Shows all voices, defaults to saved → Zira → first English → first available.
  */
 export function useVoices(savedVoiceName?: string) {
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
@@ -25,9 +22,16 @@ export function useVoices(savedVoiceName?: string) {
   useEffect(() => {
     const handleVoicesChanged = () => {
       const allVoices = speechSynthesis.getVoices();
-      const englishVoices = allVoices.filter((v) => v.lang.startsWith('en'));
 
-      const voiceInfos: VoiceInfo[] = englishVoices.map((v) => ({
+      // Sort: English voices first, then alphabetical
+      const sorted = [...allVoices].sort((a, b) => {
+        const aEn = a.lang.startsWith('en') ? 0 : 1;
+        const bEn = b.lang.startsWith('en') ? 0 : 1;
+        if (aEn !== bEn) return aEn - bEn;
+        return a.name.localeCompare(b.name);
+      });
+
+      const voiceInfos: VoiceInfo[] = sorted.map((v) => ({
         voice: v,
         label: `${v.name} (${v.lang})`,
       }));
@@ -35,7 +39,7 @@ export function useVoices(savedVoiceName?: string) {
       setVoices(voiceInfos);
 
       if (voiceInfos.length > 0 && !selectedVoiceRef.current) {
-        // Try to find saved voice first
+        // Try saved voice first
         if (savedVoiceName) {
           const saved = voiceInfos.find((v) => v.voice.name === savedVoiceName);
           if (saved) {
@@ -44,7 +48,7 @@ export function useVoices(savedVoiceName?: string) {
           }
         }
 
-        // Try to find Zira
+        // Try Zira (Windows desktop)
         const zira = voiceInfos.find((v) =>
           v.voice.name.toLowerCase().includes('zira')
         );
@@ -53,7 +57,16 @@ export function useVoices(savedVoiceName?: string) {
           return;
         }
 
-        // Fallback to first English voice
+        // Try first English voice
+        const firstEnglish = voiceInfos.find((v) =>
+          v.voice.lang.startsWith('en')
+        );
+        if (firstEnglish) {
+          setSelectedVoice(firstEnglish.voice);
+          return;
+        }
+
+        // Fallback to first available voice
         setSelectedVoice(voiceInfos[0].voice);
       }
     };
@@ -81,6 +94,5 @@ export function useVoices(savedVoiceName?: string) {
     selectedVoice,
     selectVoice,
     isSupported: 'speechSynthesis' in window,
-    preferredVoiceName: PREFERRED_VOICE,
   };
 }
