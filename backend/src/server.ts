@@ -8,6 +8,7 @@ import swaggerSpec from './config/swagger.js';
 import authRoutes from './routes/auth.routes.js';
 import bookRoutes from './routes/book.routes.js';
 import chapterRoutes from './routes/chapter.routes.js';
+import ttsRoutes from './routes/tts.routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,6 +33,7 @@ app.get('/api/health', (_req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/books', bookRoutes);
+app.use('/api/tts', ttsRoutes);
 app.use('/api', chapterRoutes);
 
 // Start server

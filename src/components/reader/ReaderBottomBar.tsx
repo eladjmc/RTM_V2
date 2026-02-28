@@ -1,5 +1,5 @@
 import { Box, IconButton, MenuItem, Select, Tooltip } from '@mui/material';
-import { SkipPrevious, SkipNext } from '@mui/icons-material';
+import { SkipPrevious, SkipNext, FileDownload } from '@mui/icons-material';
 import type { ChapterSummary } from '../../types/models';
 
 interface ReaderBottomBarProps {
@@ -11,6 +11,7 @@ interface ReaderBottomBarProps {
   onPrev: () => void;
   onNext: () => void;
   onChapterSelect: (chapterId: string) => void;
+  onDownloadAudio: () => void;
 }
 
 export default function ReaderBottomBar({
@@ -22,6 +23,7 @@ export default function ReaderBottomBar({
   onPrev,
   onNext,
   onChapterSelect,
+  onDownloadAudio,
 }: ReaderBottomBarProps) {
   const mounted = currentChapterId !== null && chapters.length > 0;
   const disabled = !mounted || isPlaying;
@@ -83,6 +85,18 @@ export default function ReaderBottomBar({
             onClick={onNext}
           >
             <SkipNext />
+          </IconButton>
+        </span>
+      </Tooltip>
+
+      <Tooltip title="Download audio">
+        <span>
+          <IconButton
+            size="small"
+            disabled={!mounted}
+            onClick={onDownloadAudio}
+          >
+            <FileDownload />
           </IconButton>
         </span>
       </Tooltip>

@@ -39,6 +39,23 @@ export const deleteChapter = (id: string): Promise<IChapter | null> => {
   return Chapter.findByIdAndDelete(id).exec();
 };
 
+/**
+ * Fetch chapters in a chapterNumber range (inclusive), with content.
+ * Sorted by chapterNumber ascending.
+ */
+export const findChaptersByRange = (
+  bookId: string,
+  fromNumber: number,
+  toNumber: number,
+): Promise<IChapter[]> => {
+  return Chapter.find({
+    book: bookId,
+    chapterNumber: { $gte: fromNumber, $lte: toNumber },
+  })
+    .sort({ chapterNumber: 1 })
+    .exec();
+};
+
 export const renumberChaptersAfter = async (
   bookId: string,
   afterNumber: number,
