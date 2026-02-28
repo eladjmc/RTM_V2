@@ -17,7 +17,7 @@ export default function AuthenticatedLayout() {
       <NavDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <Box
         component="main"
-        sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'auto' }}
+        sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
       >
         <Outlet />
       </Box>
