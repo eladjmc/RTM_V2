@@ -9,8 +9,10 @@ import {
   Stack,
   CircularProgress,
   Alert,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
-import { Save, NavigateNext, ArrowBack } from '@mui/icons-material';
+import { Save, NavigateNext, ArrowBack, Close } from '@mui/icons-material';
 import { chapterService } from '../services/chapterService';
 import { bookService } from '../services/bookService';
 
@@ -29,6 +31,7 @@ export default function ChapterEditorPage() {
   const [error, setError] = useState('');
   const [chapterNumber, setChapterNumber] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [fastCopy, setFastCopy] = useState(true);
 
   // Load book title
   useEffect(() => {
@@ -94,6 +97,31 @@ export default function ChapterEditorPage() {
     }
   };
 
+  // Keyboard shortcut: Right arrow → Save & Next
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  const contentValRef = useRef(content);
+  contentValRef.current = content;
+  const fastCopyRef = useRef(fastCopy);
+  fastCopyRef.current = fastCopy;
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowRight' || isEdit) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      // When focused in a field, only intercept if Fast Copy is on
+      if (inField && !fastCopyRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // If content is empty, nothing to save — just stay ready for next paste
+      if (!contentValRef.current.trim()) return;
+      handleSaveRef.current(true);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isEdit]);
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -153,7 +181,20 @@ export default function ChapterEditorPage() {
             }}
           />
 
-          <Stack direction="row" spacing={1} justifyContent="flex-end">
+          <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+            {!isEdit && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={fastCopy}
+                    onChange={(e) => setFastCopy(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Fast copy"
+                sx={{ mr: 'auto' }}
+              />
+            )}
             {isEdit ? (
               <Button
                 variant="contained"
@@ -165,14 +206,24 @@ export default function ChapterEditorPage() {
               </Button>
             ) : (
               <>
-                <Button
-                  variant="outlined"
-                  startIcon={saving ? <CircularProgress size={18} /> : <Save />}
-                  disabled={saving || !content.trim()}
-                  onClick={() => handleSave(false)}
-                >
-                  Save & Close
-                </Button>
+                {!content.trim() ? (
+                  <Button
+                    variant="outlined"
+                    startIcon={<Close />}
+                    onClick={() => navigate('/library')}
+                  >
+                    Close
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    startIcon={saving ? <CircularProgress size={18} /> : <Save />}
+                    disabled={saving}
+                    onClick={() => handleSave(false)}
+                  >
+                    Save & Close
+                  </Button>
+                )}
                 <Button
                   variant="contained"
                   endIcon={saving ? <CircularProgress size={18} /> : <NavigateNext />}
