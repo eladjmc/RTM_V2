@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // Middleware — CORS with credentials for cookie auth
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+app.use(cors({ origin: FRONTEND_URL, credentials: true, exposedHeaders: ['Content-Disposition'] }));
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 
