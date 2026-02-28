@@ -11,6 +11,7 @@ import SideTab from '../components/layout/SideTab';
 import PlaybackControls from '../components/playback/PlaybackControls';
 import ReadingPane from '../components/reader/ReadingPane';
 import ReaderBottomBar from '../components/reader/ReaderBottomBar';
+import DownloadAudioModal from '../components/reader/DownloadAudioModal';
 import SettingsDrawer from '../components/settings/SettingsDrawer';
 import { useReadingContext } from '../hooks/useReadingContext';
 import { useProgressSaver } from '../hooks/useProgressSaver';
@@ -43,6 +44,7 @@ const ReaderPage: React.FC = () => {
 
   // — Drawer —
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
 
   // — Derived —
   const paragraphs = useMemo(() => parseText(text), [text]);
@@ -210,7 +212,19 @@ const ReaderPage: React.FC = () => {
         onPrev={goPrev}
         onNext={goNext}
         onChapterSelect={goToChapter}
+        onDownloadAudio={() => setDownloadModalOpen(true)}
       />
+
+      {readingCtx && (
+        <DownloadAudioModal
+          open={downloadModalOpen}
+          onClose={() => setDownloadModalOpen(false)}
+          bookId={readingCtx.bookId}
+          bookTitle={readingCtx.bookTitle}
+          chapters={readingCtx.chapters}
+          currentChapterNumber={readingCtx.chapterNumber}
+        />
+      )}
     </>
   );
 };
