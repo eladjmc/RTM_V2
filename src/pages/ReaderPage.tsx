@@ -133,7 +133,7 @@ const ReaderPage: React.FC = () => {
   );
 
   return (
-    <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {!isSupported && (
         <Alert severity="error" sx={{ mx: 2, mt: 2 }}>
           Your browser does not support the Web Speech API. Please use Chrome or
@@ -162,7 +162,7 @@ const ReaderPage: React.FC = () => {
         onMuteToggle={handleMuteToggle}
       />
 
-      <Box sx={{ flexGrow: 1, overflow: 'auto', position: 'relative' }}>
+      <Box sx={{ flexGrow: 1, overflow: 'auto', position: 'relative', minHeight: 0 }}>
         <SideTab
           visible={!drawerOpen}
           onClick={() => setDrawerOpen(true)}
@@ -208,7 +208,7 @@ const ReaderPage: React.FC = () => {
         currentChapterId={readingCtx?.chapterId ?? null}
         hasPrev={hasPrev}
         hasNext={hasNext}
-        isPlaying={status === 'playing' || status === 'paused'}
+        isPlaying={status === 'playing'}
         onPrev={goPrev}
         onNext={goNext}
         onChapterSelect={goToChapter}
@@ -225,7 +225,7 @@ const ReaderPage: React.FC = () => {
           currentChapterNumber={readingCtx.chapterNumber}
         />
       )}
-    </>
+    </Box>
   );
 };
 
