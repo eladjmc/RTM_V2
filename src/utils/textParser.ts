@@ -29,16 +29,59 @@ export interface ParagraphInfo {
 
 /**
  * Parse raw text into paragraphs, each containing words with offsets.
- * Paragraphs are split on one or more blank lines.
- * Leading/trailing whitespace in paragraphs is preserved for offset accuracy.
+ * 1. Split by blank lines / newlines into coarse blocks.
+ * 2. Within each block, split on sentence boundaries for finer granularity.
  */
 export function parseText(rawText: string): ParagraphInfo[] {
   if (!rawText.trim()) return [];
 
+  // Step 1: get coarse blocks from line breaks
+  const coarseBlocks = rawText.includes('\n')
+    ? splitByLines(rawText)
+    : [{ text: rawText.trim(), startOffset: rawText.length - rawText.trimStart().length }];
+
+  // Step 2: within each block, split on sentence boundaries
   const paragraphs: ParagraphInfo[] = [];
-  // Split on double newlines (or more) to get paragraphs.
-  // We use a regex that captures paragraphs separated by blank lines,
-  // but also treat single newlines as paragraph breaks (like Natural Reader).
+
+  for (const block of coarseBlocks) {
+    const sentences = splitBySentencesRaw(block.text);
+
+    if (sentences.length <= 1) {
+      // Single sentence or no splits — keep as-is
+      paragraphs.push({
+        text: block.text,
+        startOffset: block.startOffset,
+        endOffset: block.startOffset + block.text.length,
+        index: paragraphs.length,
+        words: parseWords(block.text),
+      });
+    } else {
+      for (const s of sentences) {
+        paragraphs.push({
+          text: s.text,
+          startOffset: block.startOffset + s.localOffset,
+          endOffset: block.startOffset + s.localOffset + s.text.length,
+          index: paragraphs.length,
+          words: parseWords(s.text),
+        });
+      }
+    }
+  }
+
+  return paragraphs;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Line-based splitting (text with newlines)                         */
+/* ------------------------------------------------------------------ */
+
+interface CoarseBlock {
+  text: string;
+  startOffset: number;
+}
+
+function splitByLines(rawText: string): CoarseBlock[] {
+  const blocks: CoarseBlock[] = [];
   const lines = rawText.split(/\n/);
 
   let currentParagraph = '';
@@ -48,17 +91,13 @@ export function parseText(rawText: string): ParagraphInfo[] {
   const flushParagraph = () => {
     const trimmed = currentParagraph.trim();
     if (trimmed.length > 0) {
-      // Find the actual start (after leading whitespace)
-      const leadingWhitespace = currentParagraph.length - currentParagraph.trimStart().length;
+      const leadingWhitespace =
+        currentParagraph.length - currentParagraph.trimStart().length;
       const actualStart = currentStart + leadingWhitespace;
-      const actualEnd = actualStart + trimmed.length;
 
-      paragraphs.push({
+      blocks.push({
         text: trimmed,
         startOffset: actualStart,
-        endOffset: actualEnd,
-        index: paragraphs.length,
-        words: parseWords(trimmed),
       });
     }
     currentParagraph = '';
@@ -69,7 +108,6 @@ export function parseText(rawText: string): ParagraphInfo[] {
     const trimmedLine = line.trim();
 
     if (trimmedLine.length === 0) {
-      // Empty line — flush current paragraph
       flushParagraph();
       charIndex += line.length + 1; // +1 for \n
       currentStart = charIndex;
@@ -78,17 +116,67 @@ export function parseText(rawText: string): ParagraphInfo[] {
         currentStart = charIndex;
         currentParagraph = line;
       } else {
-        // Join multiple non-empty lines into one paragraph
         currentParagraph += ' ' + line;
       }
       charIndex += line.length + 1; // +1 for \n
     }
   }
 
-  // Flush remaining
   flushParagraph();
+  return blocks;
+}
 
-  return paragraphs;
+/* ------------------------------------------------------------------ */
+/*  Sentence-based splitting (returns local offsets within the chunk)  */
+/* ------------------------------------------------------------------ */
+
+interface SentenceChunk {
+  text: string;
+  /** Offset relative to the input string */
+  localOffset: number;
+}
+
+function splitBySentencesRaw(input: string): SentenceChunk[] {
+  const chunks: SentenceChunk[] = [];
+
+  // Sentence boundary: one or more sentence-ending punctuation marks
+  // optionally followed by closing brackets / quotes,
+  // then whitespace, then the start of a new sentence
+  // (capital letter, digit, opening bracket / quote).
+  const boundaryRegex =
+    /([.!?]+[\])"'»'"]*)\s+(?=[A-Z["'«('""\d])/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = boundaryRegex.exec(input)) !== null) {
+    const sentenceEnd = match.index + match[1].length;
+    const chunk = input.slice(lastIndex, sentenceEnd);
+    const trimmed = chunk.trim();
+
+    if (trimmed.length > 0) {
+      const leadingSpaces = chunk.length - chunk.trimStart().length;
+      chunks.push({
+        text: trimmed,
+        localOffset: lastIndex + leadingSpaces,
+      });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining text after last boundary
+  const remaining = input.slice(lastIndex);
+  const trimmedRemaining = remaining.trim();
+  if (trimmedRemaining.length > 0) {
+    const leadingSpaces = remaining.length - remaining.trimStart().length;
+    chunks.push({
+      text: trimmedRemaining,
+      localOffset: lastIndex + leadingSpaces,
+    });
+  }
+
+  return chunks;
 }
 
 /**

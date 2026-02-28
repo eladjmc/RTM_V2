@@ -16,6 +16,7 @@ export interface TTSControls {
   pause: () => void;
   resume: () => void;
   stop: () => void;
+  reset: () => void;
   skipForward: () => void;
   skipBackward: () => void;
   jumpToParagraph: (index: number) => void;
@@ -157,13 +158,13 @@ export function useTTS({
         }
       }
 
-      // All paragraphs done
-      setState({
+      // All paragraphs done — stay on last paragraph
+      setState((prev) => ({
+        ...prev,
         status: 'idle',
-        currentParagraphIndex: 0,
         currentWordIndex: -1,
         currentCharIndex: 0,
-      });
+      }));
       onEndRef.current?.();
     },
     [speakParagraph]
@@ -202,6 +203,16 @@ export function useTTS({
   }, [play]);
 
   const stop = useCallback(() => {
+    speechSynthesis.cancel();
+    setState((prev) => ({
+      ...prev,
+      status: 'paused',
+      currentWordIndex: -1,
+      currentCharIndex: 0,
+    }));
+  }, []);
+
+  const reset = useCallback(() => {
     speechSynthesis.cancel();
     setState({
       status: 'idle',
@@ -280,6 +291,6 @@ export function useTTS({
 
   return [
     state,
-    { play, pause, resume, stop, skipForward, skipBackward, jumpToParagraph },
+    { play, pause, resume, stop, reset, skipForward, skipBackward, jumpToParagraph },
   ];
 }
