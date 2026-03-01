@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import type { ParagraphInfo } from '../utils/textParser';
+import { debugLog } from '../utils/debugLog';
 
 export type PlaybackStatus = 'idle' | 'playing' | 'paused';
 
@@ -77,50 +78,72 @@ export function useTTS({
 
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
+   * Includes a watchdog — if no event fires within 3s, retries once.
    */
   const speakParagraph = useCallback(
     (paragraphIndex: number): Promise<'ended' | 'interrupted'> => {
       return new Promise((resolve) => {
         const paras = paragraphsRef.current;
         if (paragraphIndex < 0 || paragraphIndex >= paras.length) {
+          debugLog(`speakPara(${paragraphIndex}): out of range (${paras.length})`);
           resolve('ended');
           return;
         }
 
         const paragraph = paras[paragraphIndex];
-        const utterance = new SpeechSynthesisUtterance(paragraph.text);
+        const textPreview = paragraph.text.slice(0, 40);
+        debugLog(`speakPara(${paragraphIndex}): "${textPreview}…"`);
 
-        if (voiceRef.current) {
-          utterance.voice = voiceRef.current;
-          utterance.lang = voiceRef.current.lang;
-        }
-        utterance.rate = rateRef.current;
-        utterance.volume = volumeRef.current;
+        let settled = false;
+        let retried = false;
+        let watchdog: ReturnType<typeof setTimeout> | null = null;
 
-        utterance.onboundary = (event: SpeechSynthesisEvent) => {
-          if (event.name === 'word') {
-            const charIndex = event.charIndex;
-            // Find which word this charIndex corresponds to
-            const wordIdx = paragraph.words.findIndex(
-              (w) => charIndex >= w.startOffset && charIndex < w.endOffset
-            );
+        const finish = (result: 'ended' | 'interrupted', source: string) => {
+          if (settled) return;
+          settled = true;
+          if (watchdog) clearTimeout(watchdog);
+          debugLog(`  → ${result} (${source})`);
+          resolve(result);
+        };
 
-            setState((prev) => ({
-              ...prev,
-              currentWordIndex: wordIdx >= 0 ? wordIdx : prev.currentWordIndex,
-              currentCharIndex: charIndex,
-            }));
+        const createUtterance = () => {
+          const utt = new SpeechSynthesisUtterance(paragraph.text);
+          if (voiceRef.current) {
+            utt.voice = voiceRef.current;
+            utt.lang = voiceRef.current.lang;
           }
-        };
+          utt.rate = rateRef.current;
+          utt.volume = volumeRef.current;
 
-        utterance.onend = () => {
-          resolve('ended');
-        };
+          utt.onstart = () => {
+            debugLog(`  onstart fired`);
+            // Speech is actually playing — reset watchdog to a long timeout
+            if (watchdog) clearTimeout(watchdog);
+            watchdog = null;
+          };
 
-        utterance.onerror = () => {
-          // Always treat as interruption — prevents the loop from racing
-          // through every paragraph when speak() fails on mobile.
-          resolve('interrupted');
+          utt.onboundary = (event: SpeechSynthesisEvent) => {
+            if (event.name === 'word') {
+              const charIndex = event.charIndex;
+              const wordIdx = paragraph.words.findIndex(
+                (w) => charIndex >= w.startOffset && charIndex < w.endOffset
+              );
+              setState((prev) => ({
+                ...prev,
+                currentWordIndex: wordIdx >= 0 ? wordIdx : prev.currentWordIndex,
+                currentCharIndex: charIndex,
+              }));
+            }
+          };
+
+          utt.onend = () => finish('ended', 'onend');
+
+          utt.onerror = (event) => {
+            debugLog(`  onerror: ${event.error}`);
+            finish('interrupted', `onerror:${event.error}`);
+          };
+
+          return utt;
         };
 
         setState((prev) => ({
@@ -130,7 +153,39 @@ export function useTTS({
           currentCharIndex: 0,
         }));
 
-        speechSynthesis.speak(utterance);
+        const utt = createUtterance();
+        speechSynthesis.speak(utt);
+
+        const s = speechSynthesis;
+        debugLog(`  after speak(): speaking=${s.speaking} pending=${s.pending}`);
+
+        // Watchdog: if nothing happens in 3s, the speak() was swallowed.
+        watchdog = setTimeout(() => {
+          if (settled) return;
+          const ss = speechSynthesis;
+          debugLog(`  WATCHDOG: speaking=${ss.speaking} pending=${ss.pending} retried=${retried}`);
+
+          if (!retried) {
+            retried = true;
+            // Cancel everything and try once more with a delay
+            speechSynthesis.cancel();
+            const utt2 = createUtterance();
+            setTimeout(() => {
+              if (settled) return;
+              debugLog(`  RETRY speak()`);
+              speechSynthesis.speak(utt2);
+              // Second watchdog — if this also fails, give up
+              watchdog = setTimeout(() => {
+                if (!settled) {
+                  debugLog(`  RETRY also failed — giving up`);
+                  finish('interrupted', 'watchdog-timeout');
+                }
+              }, 4000);
+            }, 200);
+          } else {
+            finish('interrupted', 'watchdog-timeout');
+          }
+        }, 3000);
       });
     },
     []
@@ -142,21 +197,24 @@ export function useTTS({
   const speakFrom = useCallback(
     async (startIndex: number) => {
       const paras = paragraphsRef.current;
+      debugLog(`speakFrom(${startIndex}) — ${paras.length} paragraphs`);
 
       for (let i = startIndex; i < paras.length; i++) {
         // Check if we were stopped
         if (stateRef.current.status !== 'playing') {
+          debugLog(`speakFrom: status=${stateRef.current.status}, stopping loop`);
           return;
         }
 
         const result = await speakParagraph(i);
 
         if (result === 'interrupted') {
-          return; // We were paused or stopped
+          debugLog(`speakFrom: interrupted at paragraph ${i}`);
+          return;
         }
       }
 
-      // All paragraphs done
+      debugLog('speakFrom: all paragraphs done');
       setState({
         status: 'idle',
         currentParagraphIndex: 0,
@@ -173,11 +231,11 @@ export function useTTS({
       if (paragraphsRef.current.length === 0) return;
 
       const startIdx = fromIndex ?? stateRef.current.currentParagraphIndex;
-      const needsCancel = speechSynthesis.speaking || speechSynthesis.pending;
+      const s = speechSynthesis;
+      debugLog(`play(${fromIndex ?? 'cur'}) → idx=${startIdx} speaking=${s.speaking} pending=${s.pending} voice=${voiceRef.current?.name ?? 'NULL'}`);
 
-      if (needsCancel) {
-        speechSynthesis.cancel();
-      }
+      // Always cancel to reset engine state — needed on some mobile browsers
+      speechSynthesis.cancel();
 
       // Sync the ref immediately so speakFrom's status check passes
       stateRef.current = {
@@ -188,13 +246,9 @@ export function useTTS({
       };
       setState(stateRef.current);
 
-      if (needsCancel) {
-        // Audio context already unlocked; delay so cancel() finishes
-        setTimeout(() => speakFrom(startIdx), 150);
-      } else {
-        // First play from idle — call directly to preserve user gesture
-        speakFrom(startIdx);
-      }
+      // Small delay after cancel — mobile engines need time to reset.
+      // User gesture audio unlock persists across setTimeout on modern browsers.
+      setTimeout(() => speakFrom(startIdx), 100);
     },
     [speakFrom]
   );
