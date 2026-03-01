@@ -31,12 +31,12 @@ interface UseTTSOptions {
 }
 
 /**
- * Core TTS hook — event-driven paragraph sequencing.
+ * Core TTS hook — manages SpeechSynthesis playback, paragraph sequencing,
+ * and word boundary tracking for highlighting.
  *
- * Instead of an async for-loop (which races on mobile when cancel() fires
- * onend instead of onerror), each paragraph's onend callback schedules the
- * next paragraph.  A synchronous `activeRef` boolean (set BEFORE cancel())
- * prevents phantom callbacks from cascading.
+ * Uses an async for-loop to sequence paragraphs. A synchronous `activeRef`
+ * boolean (set BEFORE cancel()) prevents phantom onend events from
+ * advancing the loop when cancel() fires onend on mobile.
  */
 export function useTTS({
   paragraphs,
@@ -52,14 +52,15 @@ export function useTTS({
     currentCharIndex: 0,
   });
 
-  /* ── Refs (synchronous, no React-effect delay) ── */
+  const stateRef = useRef(state);
   const paragraphsRef = useRef(paragraphs);
   const voiceRef = useRef(voice);
   const rateRef = useRef(rate);
   const volumeRef = useRef(volume);
   const onEndRef = useRef(onEnd);
-  const currentIdxRef = useRef(0);
 
+  // Sync refs in an effect to comply with React 19 strict mode
+  useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { paragraphsRef.current = paragraphs; }, [paragraphs]);
   useEffect(() => { voiceRef.current = voice; }, [voice]);
   useEffect(() => { rateRef.current = rate; }, [rate]);
@@ -67,109 +68,132 @@ export function useTTS({
   useEffect(() => { onEndRef.current = onEnd; }, [onEnd]);
 
   /**
-   * activeRef is the single source of truth for "should the chain continue?".
-   * It is updated SYNCHRONOUSLY (before cancel()) so that any phantom onend
-   * fired by cancel() will see `false` and bail out.
+   * activeRef — synchronous guard against cancel() phantom events.
+   * Set to false BEFORE cancel(), set to true BEFORE speakFrom().
    */
   const activeRef = useRef(false);
 
-  /* ── Speak one paragraph, advance on completion ── */
+  /**
+   * Speak a single paragraph. Returns a promise that resolves when done.
+   */
+  const speakParagraph = useCallback(
+    (paragraphIndex: number): Promise<'ended' | 'interrupted'> => {
+      return new Promise((resolve) => {
+        const paras = paragraphsRef.current;
+        if (paragraphIndex < 0 || paragraphIndex >= paras.length) {
+          resolve('ended');
+          return;
+        }
 
-  const speakIndexRef = useRef<(index: number) => void>(() => {});
+        const paragraph = paras[paragraphIndex];
+        const utterance = new SpeechSynthesisUtterance(paragraph.text);
 
-  const speakIndex = useCallback((index: number) => {
-    const paras = paragraphsRef.current;
+        if (voiceRef.current) {
+          utterance.voice = voiceRef.current;
+          utterance.lang = voiceRef.current.lang;
+        }
+        utterance.rate = rateRef.current;
+        utterance.volume = volumeRef.current;
 
-    // Chain finished — all paragraphs read
-    if (index >= paras.length) {
-      activeRef.current = false;
-      currentIdxRef.current = 0;
-      setState({ status: 'idle', currentParagraphIndex: 0, currentWordIndex: -1, currentCharIndex: 0 });
-      onEndRef.current?.();
-      return;
-    }
+        utterance.onboundary = (event: SpeechSynthesisEvent) => {
+          if (event.name === 'word') {
+            const charIndex = event.charIndex;
+            const wordIdx = paragraph.words.findIndex(
+              (w) => charIndex >= w.startOffset && charIndex < w.endOffset
+            );
 
-    const paragraph = paras[index];
-    const utterance = new SpeechSynthesisUtterance(paragraph.text);
+            setState((prev) => ({
+              ...prev,
+              currentWordIndex: wordIdx >= 0 ? wordIdx : prev.currentWordIndex,
+              currentCharIndex: charIndex,
+            }));
+          }
+        };
 
-    if (voiceRef.current) {
-      utterance.voice = voiceRef.current;
-      utterance.lang = voiceRef.current.lang;
-    }
-    utterance.rate = rateRef.current;
-    utterance.volume = volumeRef.current;
+        utterance.onend = () => {
+          // If activeRef is false, cancel() was called — treat as interrupted
+          resolve(activeRef.current ? 'ended' : 'interrupted');
+        };
 
-    /* Word-boundary highlighting */
-    utterance.onboundary = (event: SpeechSynthesisEvent) => {
-      if (event.name === 'word') {
-        const charIndex = event.charIndex;
-        const wordIdx = paragraph.words.findIndex(
-          (w) => charIndex >= w.startOffset && charIndex < w.endOffset
-        );
+        utterance.onerror = (event) => {
+          if (event.error === 'interrupted' || event.error === 'canceled') {
+            resolve('interrupted');
+          } else {
+            resolve(activeRef.current ? 'ended' : 'interrupted');
+          }
+        };
+
         setState((prev) => ({
           ...prev,
-          currentWordIndex: wordIdx >= 0 ? wordIdx : prev.currentWordIndex,
-          currentCharIndex: charIndex,
+          currentParagraphIndex: paragraphIndex,
+          currentWordIndex: -1,
+          currentCharIndex: 0,
         }));
+
+        speechSynthesis.speak(utterance);
+      });
+    },
+    []
+  );
+
+  /**
+   * Sequentially speak paragraphs starting from the given index.
+   */
+  const speakFrom = useCallback(
+    async (startIndex: number) => {
+      const paras = paragraphsRef.current;
+
+      for (let i = startIndex; i < paras.length; i++) {
+        // Check synchronous flag — not stateRef (which lags behind)
+        if (!activeRef.current) {
+          return;
+        }
+
+        const result = await speakParagraph(i);
+
+        if (result === 'interrupted') {
+          return; // We were paused, stopped, or cancel() was called
+        }
       }
-    };
 
-    /* On completion → advance to next paragraph */
-    utterance.onend = () => {
-      if (!activeRef.current) return;          // chain was cancelled
-      const next = currentIdxRef.current + 1;
-      currentIdxRef.current = next;
-      speakIndexRef.current(next);
-    };
-
-    utterance.onerror = () => {
-      // cancel / interrupted — just stop; activeRef is already false
-      // unknown errors — also stop to avoid infinite retries
-    };
-
-    currentIdxRef.current = index;
-    setState((prev) => ({
-      ...prev,
-      currentParagraphIndex: index,
-      currentWordIndex: -1,
-      currentCharIndex: 0,
-    }));
-
-    try {
-      speechSynthesis.speak(utterance);
-    } catch {
+      // All paragraphs done
+      if (!activeRef.current) return;
       activeRef.current = false;
-    }
-  }, []);
-
-  useEffect(() => { speakIndexRef.current = speakIndex; }, [speakIndex]);
-
-  /* ── Controls ── */
+      setState({
+        status: 'idle',
+        currentParagraphIndex: 0,
+        currentWordIndex: -1,
+        currentCharIndex: 0,
+      });
+      onEndRef.current?.();
+    },
+    [speakParagraph]
+  );
 
   const play = useCallback(
     (fromIndex?: number) => {
       if (paragraphsRef.current.length === 0) return;
 
-      // 1. Kill any existing chain SYNCHRONOUSLY
+      // Kill any existing chain synchronously
       activeRef.current = false;
       speechSynthesis.cancel();
 
-      const startIdx = fromIndex ?? currentIdxRef.current;
+      const startIdx = fromIndex ?? stateRef.current.currentParagraphIndex;
 
-      // 2. Start new chain after a tick (lets cancel's phantom onend drain)
-      setState({
+      setState((prev) => ({
+        ...prev,
         status: 'playing',
         currentParagraphIndex: startIdx,
         currentWordIndex: -1,
-        currentCharIndex: 0,
-      });
+      }));
 
+      // Start speech after a tick (let cancel's phantom events drain)
       setTimeout(() => {
         activeRef.current = true;
-        speakIndex(startIdx);
-      }, 100);
+        speakFrom(startIdx);
+      }, 50);
     },
-    [speakIndex]
+    [speakFrom]
   );
 
   const pause = useCallback(() => {
@@ -178,6 +202,7 @@ export function useTTS({
   }, []);
 
   const resume = useCallback(() => {
+    // If speech was cancelled (e.g. after jumpToParagraph), start fresh
     if (!speechSynthesis.speaking && !speechSynthesis.pending) {
       play();
       return;
@@ -189,26 +214,33 @@ export function useTTS({
   const stop = useCallback(() => {
     activeRef.current = false;
     speechSynthesis.cancel();
-    currentIdxRef.current = 0;
-    setState({ status: 'idle', currentParagraphIndex: 0, currentWordIndex: -1, currentCharIndex: 0 });
+    setState({
+      status: 'idle',
+      currentParagraphIndex: 0,
+      currentWordIndex: -1,
+      currentCharIndex: 0,
+    });
   }, []);
 
   const reset = useCallback(() => {
     activeRef.current = false;
     speechSynthesis.cancel();
-    currentIdxRef.current = 0;
-    setState({ status: 'idle', currentParagraphIndex: 0, currentWordIndex: -1, currentCharIndex: 0 });
+    setState({
+      status: 'idle',
+      currentParagraphIndex: 0,
+      currentWordIndex: -1,
+      currentCharIndex: 0,
+    });
   }, []);
 
   const skipForward = useCallback(() => {
-    const nextIndex = currentIdxRef.current + 1;
+    const nextIndex = stateRef.current.currentParagraphIndex + 1;
     if (nextIndex >= paragraphsRef.current.length) return;
 
-    const wasPlaying = activeRef.current;
+    const wasPlaying = stateRef.current.status === 'playing';
     activeRef.current = false;
     speechSynthesis.cancel();
 
-    currentIdxRef.current = nextIndex;
     setState((prev) => ({
       ...prev,
       status: wasPlaying ? 'playing' : prev.status,
@@ -220,19 +252,18 @@ export function useTTS({
     if (wasPlaying) {
       setTimeout(() => {
         activeRef.current = true;
-        speakIndex(nextIndex);
-      }, 100);
+        speakFrom(nextIndex);
+      }, 50);
     }
-  }, [speakIndex]);
+  }, [speakFrom]);
 
   const skipBackward = useCallback(() => {
-    const prevIndex = Math.max(0, currentIdxRef.current - 1);
+    const prevIndex = Math.max(0, stateRef.current.currentParagraphIndex - 1);
 
-    const wasPlaying = activeRef.current;
+    const wasPlaying = stateRef.current.status === 'playing';
     activeRef.current = false;
     speechSynthesis.cancel();
 
-    currentIdxRef.current = prevIndex;
     setState((prev) => ({
       ...prev,
       status: wasPlaying ? 'playing' : prev.status,
@@ -244,20 +275,19 @@ export function useTTS({
     if (wasPlaying) {
       setTimeout(() => {
         activeRef.current = true;
-        speakIndex(prevIndex);
-      }, 100);
+        speakFrom(prevIndex);
+      }, 50);
     }
-  }, [speakIndex]);
+  }, [speakFrom]);
 
   const jumpToParagraph = useCallback(
     (index: number) => {
       if (index < 0 || index >= paragraphsRef.current.length) return;
 
-      const wasPlaying = activeRef.current;
+      const wasPlaying = stateRef.current.status === 'playing';
       activeRef.current = false;
       speechSynthesis.cancel();
 
-      currentIdxRef.current = index;
       setState((prev) => ({
         ...prev,
         status: wasPlaying ? 'playing' : 'paused',
@@ -269,11 +299,11 @@ export function useTTS({
       if (wasPlaying) {
         setTimeout(() => {
           activeRef.current = true;
-          speakIndex(index);
-        }, 100);
+          speakFrom(index);
+        }, 50);
       }
     },
-    [speakIndex]
+    [speakFrom]
   );
 
   return [
