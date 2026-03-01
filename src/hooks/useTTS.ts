@@ -82,11 +82,9 @@ export function useTTS({
 
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
-   * 'phantom' means mobile fired onend immediately without actually speaking,
-   * or the utterance silently stalled and the watchdog kicked in.
    */
   const speakParagraph = useCallback(
-    (paragraphIndex: number, gen: number): Promise<'ended' | 'interrupted' | 'phantom'> => {
+    (paragraphIndex: number, gen: number): Promise<'ended' | 'interrupted'> => {
       return new Promise((resolve) => {
         // If generation already changed, bail immediately
         if (gen !== generationRef.current) {
@@ -110,22 +108,8 @@ export function useTTS({
         utterance.rate = rateRef.current;
         utterance.volume = volumeRef.current;
 
-        // ── Guard against double-resolve ──
-        let settled = false;
-        const finish = (result: 'ended' | 'interrupted' | 'phantom') => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(watchdog);
-          resolve(result);
-        };
-
-        // Phantom detection: track whether speech actually produced output
-        let hadBoundary = false;
-        const speakTime = Date.now();
-
         utterance.onboundary = (event: SpeechSynthesisEvent) => {
           if (event.name === 'word') {
-            hadBoundary = true;
             const charIndex = event.charIndex;
             const wordIdx = paragraph.words.findIndex(
               (w) => charIndex >= w.startOffset && charIndex < w.endOffset
@@ -140,35 +124,16 @@ export function useTTS({
         };
 
         utterance.onend = () => {
-          if (gen !== generationRef.current) {
-            finish('interrupted');
-            return;
-          }
-          // Mobile phantom: onend fires quickly with no boundary events.
-          // Use 500ms threshold to account for slow mobile devices.
-          if (!hadBoundary && Date.now() - speakTime < 500) {
-            finish('phantom');
-            return;
-          }
-          finish('ended');
+          resolve(gen === generationRef.current ? 'ended' : 'interrupted');
         };
 
         utterance.onerror = (event) => {
           if (event.error === 'interrupted' || event.error === 'canceled') {
-            finish('interrupted');
+            resolve('interrupted');
           } else {
-            finish(gen === generationRef.current ? 'ended' : 'interrupted');
+            resolve(gen === generationRef.current ? 'ended' : 'interrupted');
           }
         };
-
-        // ── Watchdog: if speech produces nothing in 5 seconds, force-fail ──
-        const watchdog = setTimeout(() => {
-          if (!hadBoundary && gen === generationRef.current) {
-            try { speechSynthesis.cancel(); } catch { /* ignore */ }
-            // Small delay for the cancel onend/onerror to settle, then force
-            setTimeout(() => finish('phantom'), 100);
-          }
-        }, 5000);
 
         setState((prev) => ({
           ...prev,
@@ -196,28 +161,7 @@ export function useTTS({
           return;
         }
 
-        let result = await speakParagraph(i, gen);
-
-        // Mobile phantom: retry up to 3 times with increasing delay
-        let retries = 0;
-        while (result === 'phantom' && retries < 3) {
-          retries++;
-          // Wait 500ms, 1000ms, 1500ms between retries
-          await new Promise((r) => setTimeout(r, 500 * retries));
-          if (gen !== generationRef.current) return;
-          result = await speakParagraph(i, gen);
-        }
-
-        // If still phantom after retries, give up gracefully (don't fire onEnd)
-        if (result === 'phantom') {
-          setState((prev) => ({
-            ...prev,
-            status: 'idle',
-            currentWordIndex: -1,
-            currentCharIndex: 0,
-          }));
-          return;
-        }
+        const result = await speakParagraph(i, gen);
 
         if (result === 'interrupted') {
           return;
