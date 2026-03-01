@@ -117,12 +117,10 @@ export function useTTS({
           resolve('ended');
         };
 
-        utterance.onerror = (event) => {
-          if (event.error === 'interrupted' || event.error === 'canceled') {
-            resolve('interrupted');
-          } else {
-            resolve('ended');
-          }
+        utterance.onerror = () => {
+          // Always treat as interruption — prevents the loop from racing
+          // through every paragraph when speak() fails on mobile.
+          resolve('interrupted');
         };
 
         setState((prev) => ({
@@ -178,17 +176,17 @@ export function useTTS({
 
       const startIdx = fromIndex ?? stateRef.current.currentParagraphIndex;
 
-      setState((prev) => ({
-        ...prev,
+      // Sync the ref immediately so speakFrom's status check passes
+      stateRef.current = {
+        ...stateRef.current,
         status: 'playing',
         currentParagraphIndex: startIdx,
         currentWordIndex: -1,
-      }));
+      };
+      setState(stateRef.current);
 
-      // Use setTimeout to ensure state is updated before starting speech
-      setTimeout(() => {
-        speakFrom(startIdx);
-      }, 50);
+      // Call directly — no setTimeout — preserves user-gesture on mobile
+      speakFrom(startIdx);
     },
     [speakFrom]
   );
@@ -235,18 +233,17 @@ export function useTTS({
     const wasPlaying = stateRef.current.status === 'playing';
     speechSynthesis.cancel();
 
-    setState((prev) => ({
-      ...prev,
-      status: wasPlaying ? 'playing' : prev.status,
+    stateRef.current = {
+      ...stateRef.current,
+      status: wasPlaying ? 'playing' : stateRef.current.status,
       currentParagraphIndex: nextIndex,
       currentWordIndex: -1,
       currentCharIndex: 0,
-    }));
+    };
+    setState(stateRef.current);
 
     if (wasPlaying) {
-      setTimeout(() => {
-        speakFrom(nextIndex);
-      }, 50);
+      speakFrom(nextIndex);
     }
   }, [speakFrom]);
 
@@ -256,18 +253,17 @@ export function useTTS({
     const wasPlaying = stateRef.current.status === 'playing';
     speechSynthesis.cancel();
 
-    setState((prev) => ({
-      ...prev,
-      status: wasPlaying ? 'playing' : prev.status,
+    stateRef.current = {
+      ...stateRef.current,
+      status: wasPlaying ? 'playing' : stateRef.current.status,
       currentParagraphIndex: prevIndex,
       currentWordIndex: -1,
       currentCharIndex: 0,
-    }));
+    };
+    setState(stateRef.current);
 
     if (wasPlaying) {
-      setTimeout(() => {
-        speakFrom(prevIndex);
-      }, 50);
+      speakFrom(prevIndex);
     }
   }, [speakFrom]);
 
@@ -278,18 +274,17 @@ export function useTTS({
       const wasPlaying = stateRef.current.status === 'playing';
       speechSynthesis.cancel();
 
-      setState((prev) => ({
-        ...prev,
+      stateRef.current = {
+        ...stateRef.current,
         status: wasPlaying ? 'playing' : 'paused',
         currentParagraphIndex: index,
         currentWordIndex: -1,
         currentCharIndex: 0,
-      }));
+      };
+      setState(stateRef.current);
 
       if (wasPlaying) {
-        setTimeout(() => {
-          speakFrom(index);
-        }, 50);
+        speakFrom(index);
       }
     },
     [speakFrom]
