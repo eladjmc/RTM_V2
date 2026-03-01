@@ -16,6 +16,7 @@ import {
   Headphones,
   MenuBook,
   Logout,
+  SkipNext,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -30,6 +31,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
     'rtm-theme',
     window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   );
+  const [autoNext, setAutoNext] = useLocalStorage('rtm-auto-next-chapter', true);
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
@@ -77,6 +79,17 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
           </Button>
 
           <Box sx={{ width: 8 }} />
+
+          <Tooltip title={autoNext ? 'Auto-next chapter: ON' : 'Auto-next chapter: OFF'}>
+            <IconButton
+              size="small"
+              onClick={() => setAutoNext((p) => !p)}
+              aria-label="Toggle auto-next chapter"
+              color={autoNext ? 'primary' : 'default'}
+            >
+              <SkipNext fontSize="small" />
+            </IconButton>
+          </Tooltip>
 
           <Tooltip title={themeMode === 'light' ? 'Dark mode' : 'Light mode'}>
             <IconButton

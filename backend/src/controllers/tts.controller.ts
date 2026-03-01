@@ -3,6 +3,7 @@ import * as chapterDal from '../dal/chapter.dal.js';
 import * as bookDal from '../dal/book.dal.js';
 import * as ttsService from '../services/tts.service.js';
 import * as sapiTtsService from '../services/sapi-tts.service.js';
+import { fixMp3Duration } from '../utils/mp3-fix.js';
 
 /**
  * GET /tts/voices — returns list of en-US voices
@@ -112,6 +113,9 @@ export const downloadAudio = async (req: Request, res: Response): Promise<void> 
     }
 
     console.log(`TTS: Done — ${(mp3Buffer.length / 1024 / 1024).toFixed(1)} MB`);
+
+    // ── Fix MP3 duration metadata ─────────────────────────────
+    mp3Buffer = fixMp3Duration(mp3Buffer);
 
     // ── Build download filename ─────────────────────────────
     const safeTitle = book.title.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();

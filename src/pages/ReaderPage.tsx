@@ -6,6 +6,7 @@ import { useVoices } from '../hooks/useVoices';
 import { useTTS } from '../hooks/useTTS';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { parseText } from '../utils/textParser';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 import SideTab from '../components/layout/SideTab';
 import PlaybackControls from '../components/playback/PlaybackControls';
@@ -39,8 +40,20 @@ const ReaderPage: React.FC = () => {
   const saveRef = useRef<() => void>(() => {});
   const stableSave = useCallback(() => saveRef.current(), []);
 
+  // — Auto-next-chapter toggle (shared with AppHeader / NavDrawer) —
+  const [autoNextChapter] = useLocalStorage('rtm-auto-next-chapter', true);
+  const autoNextRef = useRef(autoNextChapter);
+  useEffect(() => { autoNextRef.current = autoNextChapter; }, [autoNextChapter]);
+
+  // Flag: after auto-navigating, start playback once new paragraphs load
+  const autoPlayPending = useRef(false);
+
   // — Reading context (book/chapter nav) —
   const { context: readingCtx, hasPrev, hasNext, goPrev, goNext, goToChapter } = useReadingContext(stableSave);
+  const hasNextRef = useRef(hasNext);
+  useEffect(() => { hasNextRef.current = hasNext; }, [hasNext]);
+  const goNextRef = useRef(goNext);
+  useEffect(() => { goNextRef.current = goNext; }, [goNext]);
 
   // — Drawer —
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -55,11 +68,19 @@ const ReaderPage: React.FC = () => {
     useVoices(savedVoiceName);
 
   // — TTS —
+  const handleTTSEnd = useCallback(() => {
+    if (autoNextRef.current && hasNextRef.current) {
+      autoPlayPending.current = true;
+      goNextRef.current();
+    }
+  }, []);
+
   const [ttsState, ttsControls] = useTTS({
     paragraphs,
     voice: selectedVoice,
     rate: speed,
     volume: isMuted ? 0 : volume,
+    onEnd: handleTTSEnd,
   });
 
   const { status, currentParagraphIndex, currentWordIndex } = ttsState;
@@ -74,6 +95,20 @@ const ReaderPage: React.FC = () => {
 
   // — Wake lock —
   useWakeLock(status === 'playing');
+
+  // — Auto-play after chapter navigation —
+  const prevChapterId = useRef(readingCtx?.chapterId);
+  useEffect(() => {
+    const chId = readingCtx?.chapterId;
+    if (chId && chId !== prevChapterId.current) {
+      prevChapterId.current = chId;
+      if (autoPlayPending.current && paragraphs.length > 0) {
+        autoPlayPending.current = false;
+        // Small delay so TTS state settles after chapter swap
+        setTimeout(() => ttsControls.play(), 100);
+      }
+    }
+  }, [readingCtx?.chapterId, paragraphs, ttsControls]);
 
   // — Restore saved position on mount —
   useEffect(() => {
