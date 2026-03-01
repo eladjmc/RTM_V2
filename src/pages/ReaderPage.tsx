@@ -109,18 +109,19 @@ const ReaderPage: React.FC = () => {
 
   // — Auto-play after chapter navigation —
   const prevChapterId = useRef(readingCtx?.chapterId);
+  const ttsControlsRef = useRef(ttsControls);
+  useEffect(() => { ttsControlsRef.current = ttsControls; }, [ttsControls]);
+
   useEffect(() => {
     const chId = readingCtx?.chapterId;
     if (chId && chId !== prevChapterId.current) {
       prevChapterId.current = chId;
       if (autoPlayPending.current && paragraphs.length > 0) {
         autoPlayPending.current = false;
-        // Single call — play(0) bumps generation, handles cancel internally,
-        // and starts from paragraph 0. No separate reset() to avoid double-cancel.
-        ttsControls.play(0);
+        ttsControlsRef.current.play(0);
       }
     }
-  }, [readingCtx?.chapterId, paragraphs, ttsControls]);
+  }, [readingCtx?.chapterId, paragraphs]);
 
   // — Restore saved position on mount —
   useEffect(() => {
