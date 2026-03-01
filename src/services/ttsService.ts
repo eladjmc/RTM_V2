@@ -13,6 +13,7 @@ export interface DownloadAudioParams {
   chapterCount: number;
   voice: string;
   rate?: number;
+  provider?: 'edge' | 'sapi';
 }
 
 export interface TtsChapterError {
@@ -28,7 +29,7 @@ export interface TtsErrorResponse {
 }
 
 export const ttsService = {
-  /** Fetch available en-US voices */
+  /** Fetch available en-US Edge voices */
   getVoices: async (): Promise<TtsVoice[]> => {
     const res = await fetch(`${API_URL}/api/tts/voices`, {
       credentials: 'include',
