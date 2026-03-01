@@ -35,6 +35,7 @@ export const createBook = (data: {
   title: string;
   author?: string;
   cover?: string;
+  startingChapterNumber?: number;
 }) => {
   return bookDal.createBook(data);
 };

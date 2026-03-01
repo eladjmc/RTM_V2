@@ -5,6 +5,7 @@ export interface IBook extends Document {
   title: string;
   author?: string;
   cover?: string;
+  startingChapterNumber: number;
   lastReadChapter: Types.ObjectId | null;
   lastReadChapterNumber: number;
   lastReadAt: Date | null;
@@ -22,6 +23,7 @@ const bookSchema = new Schema<IBook>(
     title: { type: String, required: true, trim: true },
     author: { type: String, trim: true, default: '' },
     cover: { type: String, default: '' },
+    startingChapterNumber: { type: Number, default: 1 },
     lastReadChapter: {
       type: Schema.Types.ObjectId,
       ref: 'Chapter',

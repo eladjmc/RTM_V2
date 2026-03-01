@@ -33,6 +33,15 @@ router.get('/books/:bookId/chapters', chapterController.getChaptersByBook);
 
 /**
  * @swagger
+ * /books/{bookId}/chapters/next-number:
+ *   get:
+ *     tags: [Chapters]
+ *     summary: Get the next auto-assigned chapter number for a book
+ */
+router.get('/books/:bookId/chapters/next-number', chapterController.getNextChapterNumber);
+
+/**
+ * @swagger
  * /books/{bookId}/chapters:
  *   post:
  *     tags: [Chapters]

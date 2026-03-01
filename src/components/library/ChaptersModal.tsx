@@ -71,7 +71,7 @@ export default function ChaptersModal({
   }, [chapters, filter]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this chapter? Remaining chapters will be renumbered.')) return;
+    if (!confirm('Delete this chapter? This cannot be undone.')) return;
     setDeleting(id);
     try {
       await chapterService.delete(id);
