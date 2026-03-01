@@ -12,7 +12,7 @@ export default function AuthenticatedLayout() {
   useAutoMount();
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
       <AppHeader onMenuClick={() => setDrawerOpen(true)} />
       <NavDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <Box
