@@ -163,25 +163,17 @@ export async function synthesiseToBuffer(
 }
 
 /**
- * Synthesise multiple chapters sequentially (the remote server can only
- * handle one request at a time per session) and concatenate into a single MP3.
+ * Synthesise multiple chapters as a single request.
+ * Joins all text with paragraph breaks so the TTS engine pauses
+ * naturally between chapters.  Returns one clean MP3 — no concat.
  */
-export async function synthesiseChaptersSequential(
+export async function synthesiseChapters(
   texts: string[],
   config: SapiTtsConfig,
 ): Promise<Buffer> {
-  const buffers: Buffer[] = [];
-
-  for (let i = 0; i < texts.length; i++) {
-    console.log(
-      `  SAPI: chapter ${i + 1}/${texts.length} (${texts[i].length} chars)…`,
-    );
-    const buf = await synthesiseToBuffer(texts[i], config);
-    console.log(
-      `  SAPI: chapter ${i + 1} done — ${(buf.length / 1024).toFixed(0)} KB`,
-    );
-    buffers.push(buf);
-  }
-
-  return Buffer.concat(buffers);
+  const combined = texts.join('\n\n');
+  console.log(`  SAPI: ${texts.length} chapters combined — ${combined.length} chars total`);
+  const buf = await synthesiseToBuffer(combined, config);
+  console.log(`  SAPI: done — ${(buf.length / 1024).toFixed(0)} KB`);
+  return buf;
 }
