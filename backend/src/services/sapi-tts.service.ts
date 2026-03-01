@@ -12,6 +12,8 @@
 
 const BASE_URL = 'https://texttospeechfree.io';
 
+import { stripMp3Chunk } from '../utils/mp3-fix.js';
+
 /* ────────────────── Session management ───────────────────── */
 
 interface Session {
@@ -156,7 +158,13 @@ export async function synthesiseToBuffer(
     }
 
     const arrayBuffer = await dlRes.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    const raw = Buffer.from(arrayBuffer);
+
+    // Log first 16 bytes for diagnostics
+    console.log(`    SAPI raw MP3: ${raw.length} bytes, header: ${raw.subarray(0, 16).toString('hex')}`);
+
+    // Strip ID3v2 + Xing frame so concatenation doesn't poison duration
+    return stripMp3Chunk(raw);
   }
 
   throw new Error('SAPI TTS: exhausted retries');
