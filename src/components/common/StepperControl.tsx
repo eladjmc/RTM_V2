@@ -13,6 +13,8 @@ interface StepperControlProps {
   /** Allow click-to-edit on the chip */
   editable?: boolean;
   size?: 'small' | 'medium';
+  /** Hide +/- buttons on mobile */
+  hideButtons?: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ const StepperControl: React.FC<StepperControlProps> = ({
   onChange,
   editable = false,
   size = 'medium',
+  hideButtons = false,
 }) => {
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -68,6 +71,7 @@ const StepperControl: React.FC<StepperControlProps> = ({
             disabled={value <= min}
             size="small"
             aria-label={`Decrease ${label}`}
+            sx={hideButtons ? { display: { xs: 'none', sm: 'inline-flex' } } : undefined}
           >
             <Remove fontSize={isSmall ? 'small' : 'medium'} />
           </IconButton>
@@ -123,6 +127,7 @@ const StepperControl: React.FC<StepperControlProps> = ({
             disabled={value >= max}
             size="small"
             aria-label={`Increase ${label}`}
+            sx={hideButtons ? { display: { xs: 'none', sm: 'inline-flex' } } : undefined}
           >
             <Add fontSize={isSmall ? 'small' : 'medium'} />
           </IconButton>

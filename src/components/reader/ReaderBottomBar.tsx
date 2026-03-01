@@ -62,7 +62,7 @@ export default function ReaderBottomBar({
         disabled={disabled}
         displayEmpty
         onChange={(e) => onChapterSelect(e.target.value as string)}
-        sx={{ minWidth: 200, maxWidth: 320 }}
+        sx={{ minWidth: { xs: 120, sm: 200 }, maxWidth: { xs: 180, sm: 320 }, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
         MenuProps={{ PaperProps: { sx: { maxHeight: 250 } } }}
       >
         {!mounted && (

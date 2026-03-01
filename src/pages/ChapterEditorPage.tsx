@@ -131,7 +131,7 @@ export default function ChapterEditorPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto', p: 2, width: '100%' }}>
+    <Box sx={{ maxWidth: 900, mx: 'auto', p: 2, width: '100%', overflow: 'auto', flex: 1 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
         <Button
           startIcon={<ArrowBack />}

@@ -44,11 +44,9 @@ const Divider = () => (
 const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
   <Box
     sx={{
-      position: 'sticky',
-      top: 48,
-      zIndex: (t) => t.zIndex.appBar,
+      flexShrink: 0,
       px: { xs: 0.5, sm: 2 },
-      py: { xs: 0.5, sm: 1 },
+      py: { xs: 0.25, sm: 1 },
       borderBottom: 1,
       borderColor: 'divider',
       bgcolor: 'background.paper',
@@ -59,7 +57,6 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
       direction="row"
       alignItems="center"
       justifyContent="center"
-      flexWrap="wrap"
       sx={{ gap: { xs: 0.25, sm: 1 } }}
     >
       <TransportButtons
@@ -95,6 +92,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
         onChange={props.onSpeedChange}
         editable
         size="small"
+        hideButtons
       />
 
       {/* Always-visible divider before volume */}

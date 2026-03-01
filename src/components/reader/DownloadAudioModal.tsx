@@ -16,6 +16,8 @@ import {
   CircularProgress,
   Alert,
   Stack,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import { Close, Download } from '@mui/icons-material';
 import type { ChapterSummary } from '../../types/models';
@@ -43,10 +45,11 @@ export default function DownloadAudioModal({
   currentChapterNumber,
 }: DownloadAudioModalProps) {
   // ── State ────────────────────────────────────────────────────
+  const [provider, setProvider] = useState<'edge' | 'sapi'>('edge');
   const [startChapter, setStartChapter] = useState(currentChapterNumber);
   const [endChapter, setEndChapter] = useState(currentChapterNumber);
   const [voice, setVoice] = useState('en-US-AriaNeural');
-  const [rate, setRate] = useState(1.0);
+  const [rate, setRate] = useState(1.25);
   const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
 
@@ -60,7 +63,7 @@ export default function DownloadAudioModal({
     if (open) {
       setStartChapter(currentChapterNumber);
       setEndChapter(currentChapterNumber);
-      setRate(1.0);
+      setRate(1.25);
       setError(null);
       setChapterErrors(undefined);
       setSuccess(false);
@@ -111,8 +114,9 @@ export default function DownloadAudioModal({
       await ttsService.downloadAudio(bookId, {
         startChapterNumber: startChapter,
         chapterCount,
-        voice,
+        voice: provider === 'sapi' ? 'Microsoft Zira Desktop' : voice,
         rate,
+        provider,
       });
       setSuccess(true);
     } catch (err: unknown) {
@@ -183,12 +187,35 @@ export default function DownloadAudioModal({
             {chapterCount} chapter{chapterCount !== 1 ? 's' : ''} selected
           </Typography>
 
-          {/* Voice picker */}
-          <FormControl size="small" fullWidth>
+          {/* Provider toggle */}
+          <Box>
+            <Typography variant="body2" gutterBottom>
+              Voice Engine
+            </Typography>
+            <ToggleButtonGroup
+              value={provider}
+              exclusive
+              onChange={(_, val) => { if (val) setProvider(val); }}
+              size="small"
+              fullWidth
+              disabled={downloading}
+            >
+              <ToggleButton value="edge">
+                Edge (Neural)
+              </ToggleButton>
+              <ToggleButton value="sapi">
+                Zira (SAPI)
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          {/* Voice picker — only for Edge provider */}
+          {provider === 'edge' && (
+            <FormControl size="small" fullWidth>
             <InputLabel>Voice</InputLabel>
             <Select
               label="Voice"
-              value={voice}
+              value={voices.length > 0 ? voice : ''}
               onChange={(e) => setVoice(e.target.value)}
               disabled={downloading || loadingVoices}
               MenuProps={{ PaperProps: { sx: { maxHeight: 250 } } }}
@@ -200,18 +227,26 @@ export default function DownloadAudioModal({
               ))}
             </Select>
           </FormControl>
+          )}
+
+          {/* SAPI info when Zira is selected */}
+          {provider === 'sapi' && (
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              Uses Microsoft Zira — a classic, clear desktop voice via Windows SAPI.
+            </Alert>
+          )}
 
           {/* Speed slider */}
           <Box>
             <Typography variant="body2" gutterBottom>
-              Speed: {rate.toFixed(1)}x
+              Speed: {rate.toFixed(2)}x
             </Typography>
             <Slider
               value={rate}
               onChange={(_, v) => setRate(v as number)}
               min={0.5}
               max={2.0}
-              step={0.1}
+              step={0.05}
               disabled={downloading}
               marks={[
                 { value: 0.5, label: '0.5x' },
