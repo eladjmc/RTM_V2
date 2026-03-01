@@ -75,23 +75,12 @@ export function useTTS({
     onEndRef.current = onEnd;
   }, [onEnd]);
 
-  // Generation counter — incremented on every play/skip/jump.
-  // If speakFrom detects the generation changed, it exits silently
-  // instead of firing onEnd (prevents phantom-event cascades on mobile).
-  const generationRef = useRef(0);
-
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
    */
   const speakParagraph = useCallback(
-    (paragraphIndex: number, gen: number): Promise<'ended' | 'interrupted'> => {
+    (paragraphIndex: number): Promise<'ended' | 'interrupted'> => {
       return new Promise((resolve) => {
-        // If generation already changed, bail immediately
-        if (gen !== generationRef.current) {
-          resolve('interrupted');
-          return;
-        }
-
         const paras = paragraphsRef.current;
         if (paragraphIndex < 0 || paragraphIndex >= paras.length) {
           resolve('ended');
@@ -111,6 +100,7 @@ export function useTTS({
         utterance.onboundary = (event: SpeechSynthesisEvent) => {
           if (event.name === 'word') {
             const charIndex = event.charIndex;
+            // Find which word this charIndex corresponds to
             const wordIdx = paragraph.words.findIndex(
               (w) => charIndex >= w.startOffset && charIndex < w.endOffset
             );
@@ -124,14 +114,14 @@ export function useTTS({
         };
 
         utterance.onend = () => {
-          resolve(gen === generationRef.current ? 'ended' : 'interrupted');
+          resolve('ended');
         };
 
         utterance.onerror = (event) => {
           if (event.error === 'interrupted' || event.error === 'canceled') {
             resolve('interrupted');
           } else {
-            resolve(gen === generationRef.current ? 'ended' : 'interrupted');
+            resolve('ended');
           }
         };
 
@@ -142,7 +132,11 @@ export function useTTS({
           currentCharIndex: 0,
         }));
 
-        speechSynthesis.speak(utterance);
+        try {
+          speechSynthesis.speak(utterance);
+        } catch {
+          resolve('ended');
+        }
       });
     },
     []
@@ -152,31 +146,29 @@ export function useTTS({
    * Sequentially speak paragraphs starting from the given index.
    */
   const speakFrom = useCallback(
-    async (startIndex: number, gen: number) => {
+    async (startIndex: number) => {
       const paras = paragraphsRef.current;
 
       for (let i = startIndex; i < paras.length; i++) {
-        // Stale generation or stopped — exit silently
-        if (gen !== generationRef.current || stateRef.current.status !== 'playing') {
+        // Check if we were stopped
+        if (stateRef.current.status !== 'playing') {
           return;
         }
 
-        const result = await speakParagraph(i, gen);
+        const result = await speakParagraph(i);
 
         if (result === 'interrupted') {
-          return;
+          return; // We were paused or stopped
         }
       }
 
-      // Only fire onEnd if this generation is still current
-      if (gen !== generationRef.current) return;
-
-      setState((prev) => ({
-        ...prev,
+      // All paragraphs done
+      setState({
         status: 'idle',
+        currentParagraphIndex: 0,
         currentWordIndex: -1,
         currentCharIndex: 0,
-      }));
+      });
       onEndRef.current?.();
     },
     [speakParagraph]
@@ -186,31 +178,21 @@ export function useTTS({
     (fromIndex?: number) => {
       if (paragraphsRef.current.length === 0) return;
 
-      const gen = ++generationRef.current;
-
-      // Only cancel if something is actually in the pipeline —
-      // avoids putting the mobile speech engine in a bad state.
-      const needsCancel = speechSynthesis.speaking || speechSynthesis.pending;
-      if (needsCancel) {
-        speechSynthesis.cancel();
-      }
+      speechSynthesis.cancel();
 
       const startIdx = fromIndex ?? stateRef.current.currentParagraphIndex;
 
-      setState({
+      setState((prev) => ({
+        ...prev,
         status: 'playing',
         currentParagraphIndex: startIdx,
         currentWordIndex: -1,
-        currentCharIndex: 0,
-      });
+      }));
 
-      // Longer delay after cancel for mobile; shorter when no cancel needed
-      const delay = needsCancel ? 300 : 50;
+      // Use setTimeout to ensure state is updated before starting speech
       setTimeout(() => {
-        // Guard against stale generation (user may have pressed stop during delay)
-        if (gen !== generationRef.current) return;
-        speakFrom(startIdx, gen);
-      }, delay);
+        speakFrom(startIdx);
+      }, 50);
     },
     [speakFrom]
   );
@@ -221,6 +203,7 @@ export function useTTS({
   }, []);
 
   const resume = useCallback(() => {
+    // If speech was cancelled (e.g. after jumpToParagraph), start fresh
     if (!speechSynthesis.speaking && !speechSynthesis.pending) {
       play();
       return;
@@ -230,18 +213,16 @@ export function useTTS({
   }, [play]);
 
   const stop = useCallback(() => {
-    ++generationRef.current;
     speechSynthesis.cancel();
-    setState((prev) => ({
-      ...prev,
-      status: 'paused',
+    setState({
+      status: 'idle',
+      currentParagraphIndex: 0,
       currentWordIndex: -1,
       currentCharIndex: 0,
-    }));
+    });
   }, []);
 
   const reset = useCallback(() => {
-    ++generationRef.current;
     speechSynthesis.cancel();
     setState({
       status: 'idle',
@@ -256,7 +237,6 @@ export function useTTS({
     if (nextIndex >= paragraphsRef.current.length) return;
 
     const wasPlaying = stateRef.current.status === 'playing';
-    const gen = ++generationRef.current;
     speechSynthesis.cancel();
 
     setState((prev) => ({
@@ -269,9 +249,8 @@ export function useTTS({
 
     if (wasPlaying) {
       setTimeout(() => {
-        if (gen !== generationRef.current) return;
-        speakFrom(nextIndex, gen);
-      }, 300);
+        speakFrom(nextIndex);
+      }, 50);
     }
   }, [speakFrom]);
 
@@ -279,7 +258,6 @@ export function useTTS({
     const prevIndex = Math.max(0, stateRef.current.currentParagraphIndex - 1);
 
     const wasPlaying = stateRef.current.status === 'playing';
-    const gen = ++generationRef.current;
     speechSynthesis.cancel();
 
     setState((prev) => ({
@@ -292,9 +270,8 @@ export function useTTS({
 
     if (wasPlaying) {
       setTimeout(() => {
-        if (gen !== generationRef.current) return;
-        speakFrom(prevIndex, gen);
-      }, 300);
+        speakFrom(prevIndex);
+      }, 50);
     }
   }, [speakFrom]);
 
@@ -303,7 +280,6 @@ export function useTTS({
       if (index < 0 || index >= paragraphsRef.current.length) return;
 
       const wasPlaying = stateRef.current.status === 'playing';
-      const gen = ++generationRef.current;
       speechSynthesis.cancel();
 
       setState((prev) => ({
@@ -316,9 +292,8 @@ export function useTTS({
 
       if (wasPlaying) {
         setTimeout(() => {
-          if (gen !== generationRef.current) return;
-          speakFrom(index, gen);
-        }, 300);
+          speakFrom(index);
+        }, 50);
       }
     },
     [speakFrom]
