@@ -114,8 +114,8 @@ export const downloadAudio = async (req: Request, res: Response): Promise<void> 
 
     console.log(`TTS: Done — ${(mp3Buffer.length / 1024 / 1024).toFixed(1)} MB`);
 
-    // ── Fix MP3 duration metadata ─────────────────────────────
-    mp3Buffer = fixMp3Duration(mp3Buffer);
+    // ── Fix MP3 duration metadata (ffmpeg remux) ──────────────
+    mp3Buffer = await fixMp3Duration(mp3Buffer);
 
     // ── Build download filename ─────────────────────────────
     const safeTitle = book.title.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
