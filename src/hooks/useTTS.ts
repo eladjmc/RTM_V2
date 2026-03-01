@@ -172,9 +172,12 @@ export function useTTS({
     (fromIndex?: number) => {
       if (paragraphsRef.current.length === 0) return;
 
-      speechSynthesis.cancel();
-
       const startIdx = fromIndex ?? stateRef.current.currentParagraphIndex;
+      const needsCancel = speechSynthesis.speaking || speechSynthesis.pending;
+
+      if (needsCancel) {
+        speechSynthesis.cancel();
+      }
 
       // Sync the ref immediately so speakFrom's status check passes
       stateRef.current = {
@@ -185,8 +188,13 @@ export function useTTS({
       };
       setState(stateRef.current);
 
-      // Call directly — no setTimeout — preserves user-gesture on mobile
-      speakFrom(startIdx);
+      if (needsCancel) {
+        // Audio context already unlocked; delay so cancel() finishes
+        setTimeout(() => speakFrom(startIdx), 150);
+      } else {
+        // First play from idle — call directly to preserve user gesture
+        speakFrom(startIdx);
+      }
     },
     [speakFrom]
   );
@@ -243,7 +251,8 @@ export function useTTS({
     setState(stateRef.current);
 
     if (wasPlaying) {
-      speakFrom(nextIndex);
+      // Delay after cancel so mobile engine is ready
+      setTimeout(() => speakFrom(nextIndex), 150);
     }
   }, [speakFrom]);
 
@@ -263,7 +272,7 @@ export function useTTS({
     setState(stateRef.current);
 
     if (wasPlaying) {
-      speakFrom(prevIndex);
+      setTimeout(() => speakFrom(prevIndex), 150);
     }
   }, [speakFrom]);
 
@@ -284,7 +293,7 @@ export function useTTS({
       setState(stateRef.current);
 
       if (wasPlaying) {
-        speakFrom(index);
+        setTimeout(() => speakFrom(index), 150);
       }
     },
     [speakFrom]
