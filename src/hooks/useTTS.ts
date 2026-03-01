@@ -12,7 +12,7 @@ export interface TTSState {
 }
 
 export interface TTSControls {
-  play: () => void;
+  play: (fromIndex?: number) => void;
   pause: () => void;
   resume: () => void;
   stop: () => void;
@@ -82,7 +82,8 @@ export function useTTS({
 
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
-   * 'phantom' means mobile fired onend immediately without actually speaking.
+   * 'phantom' means mobile fired onend immediately without actually speaking,
+   * or the utterance silently stalled and the watchdog kicked in.
    */
   const speakParagraph = useCallback(
     (paragraphIndex: number, gen: number): Promise<'ended' | 'interrupted' | 'phantom'> => {
@@ -109,7 +110,16 @@ export function useTTS({
         utterance.rate = rateRef.current;
         utterance.volume = volumeRef.current;
 
-        // Phantom detection: track whether speech actually happened
+        // ── Guard against double-resolve ──
+        let settled = false;
+        const finish = (result: 'ended' | 'interrupted' | 'phantom') => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(watchdog);
+          resolve(result);
+        };
+
+        // Phantom detection: track whether speech actually produced output
         let hadBoundary = false;
         const speakTime = Date.now();
 
@@ -131,24 +141,34 @@ export function useTTS({
 
         utterance.onend = () => {
           if (gen !== generationRef.current) {
-            resolve('interrupted');
+            finish('interrupted');
             return;
           }
-          // Mobile phantom: onend fires in < 200ms with no boundary events
-          if (!hadBoundary && Date.now() - speakTime < 200) {
-            resolve('phantom');
+          // Mobile phantom: onend fires quickly with no boundary events.
+          // Use 500ms threshold to account for slow mobile devices.
+          if (!hadBoundary && Date.now() - speakTime < 500) {
+            finish('phantom');
             return;
           }
-          resolve('ended');
+          finish('ended');
         };
 
         utterance.onerror = (event) => {
           if (event.error === 'interrupted' || event.error === 'canceled') {
-            resolve('interrupted');
+            finish('interrupted');
           } else {
-            resolve(gen === generationRef.current ? 'ended' : 'interrupted');
+            finish(gen === generationRef.current ? 'ended' : 'interrupted');
           }
         };
+
+        // ── Watchdog: if speech produces nothing in 5 seconds, force-fail ──
+        const watchdog = setTimeout(() => {
+          if (!hadBoundary && gen === generationRef.current) {
+            try { speechSynthesis.cancel(); } catch { /* ignore */ }
+            // Small delay for the cancel onend/onerror to settle, then force
+            setTimeout(() => finish('phantom'), 100);
+          }
+        }, 5000);
 
         setState((prev) => ({
           ...prev,
@@ -178,16 +198,17 @@ export function useTTS({
 
         let result = await speakParagraph(i, gen);
 
-        // Mobile phantom: retry up to 2 times with increasing delay
+        // Mobile phantom: retry up to 3 times with increasing delay
         let retries = 0;
-        while (result === 'phantom' && retries < 2) {
+        while (result === 'phantom' && retries < 3) {
           retries++;
-          await new Promise((r) => setTimeout(r, 300 * retries));
+          // Wait 500ms, 1000ms, 1500ms between retries
+          await new Promise((r) => setTimeout(r, 500 * retries));
           if (gen !== generationRef.current) return;
           result = await speakParagraph(i, gen);
         }
 
-        // If still phantom after retries, give up gracefully
+        // If still phantom after retries, give up gracefully (don't fire onEnd)
         if (result === 'phantom') {
           setState((prev) => ({
             ...prev,
@@ -217,22 +238,38 @@ export function useTTS({
     [speakParagraph]
   );
 
-  const play = useCallback(() => {
-    if (paragraphsRef.current.length === 0) return;
+  const play = useCallback(
+    (fromIndex?: number) => {
+      if (paragraphsRef.current.length === 0) return;
 
-    const gen = ++generationRef.current;
-    speechSynthesis.cancel();
+      const gen = ++generationRef.current;
 
-    setState((prev) => ({
-      ...prev,
-      status: 'playing',
-      currentWordIndex: -1,
-    }));
+      // Only cancel if something is actually in the pipeline —
+      // avoids putting the mobile speech engine in a bad state.
+      const needsCancel = speechSynthesis.speaking || speechSynthesis.pending;
+      if (needsCancel) {
+        speechSynthesis.cancel();
+      }
 
-    setTimeout(() => {
-      speakFrom(stateRef.current.currentParagraphIndex, gen);
-    }, 50);
-  }, [speakFrom]);
+      const startIdx = fromIndex ?? stateRef.current.currentParagraphIndex;
+
+      setState({
+        status: 'playing',
+        currentParagraphIndex: startIdx,
+        currentWordIndex: -1,
+        currentCharIndex: 0,
+      });
+
+      // Longer delay after cancel for mobile; shorter when no cancel needed
+      const delay = needsCancel ? 300 : 50;
+      setTimeout(() => {
+        // Guard against stale generation (user may have pressed stop during delay)
+        if (gen !== generationRef.current) return;
+        speakFrom(startIdx, gen);
+      }, delay);
+    },
+    [speakFrom]
+  );
 
   const pause = useCallback(() => {
     speechSynthesis.pause();
@@ -288,8 +325,9 @@ export function useTTS({
 
     if (wasPlaying) {
       setTimeout(() => {
+        if (gen !== generationRef.current) return;
         speakFrom(nextIndex, gen);
-      }, 50);
+      }, 300);
     }
   }, [speakFrom]);
 
@@ -310,8 +348,9 @@ export function useTTS({
 
     if (wasPlaying) {
       setTimeout(() => {
+        if (gen !== generationRef.current) return;
         speakFrom(prevIndex, gen);
-      }, 50);
+      }, 300);
     }
   }, [speakFrom]);
 
@@ -333,8 +372,9 @@ export function useTTS({
 
       if (wasPlaying) {
         setTimeout(() => {
+          if (gen !== generationRef.current) return;
           speakFrom(index, gen);
-        }, 50);
+        }, 300);
       }
     },
     [speakFrom]

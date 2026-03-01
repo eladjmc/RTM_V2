@@ -115,9 +115,9 @@ const ReaderPage: React.FC = () => {
       prevChapterId.current = chId;
       if (autoPlayPending.current && paragraphs.length > 0) {
         autoPlayPending.current = false;
-        // Reset clears stale paragraph index + bumps generation (kills phantom events)
-        ttsControls.reset();
-        setTimeout(() => ttsControls.play(), 150);
+        // Single call — play(0) bumps generation, handles cancel internally,
+        // and starts from paragraph 0. No separate reset() to avoid double-cancel.
+        ttsControls.play(0);
       }
     }
   }, [readingCtx?.chapterId, paragraphs, ttsControls]);
