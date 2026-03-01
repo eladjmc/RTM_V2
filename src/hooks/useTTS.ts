@@ -82,9 +82,10 @@ export function useTTS({
 
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
+   * 'phantom' means mobile fired onend immediately without actually speaking.
    */
   const speakParagraph = useCallback(
-    (paragraphIndex: number, gen: number): Promise<'ended' | 'interrupted'> => {
+    (paragraphIndex: number, gen: number): Promise<'ended' | 'interrupted' | 'phantom'> => {
       return new Promise((resolve) => {
         // If generation already changed, bail immediately
         if (gen !== generationRef.current) {
@@ -108,8 +109,13 @@ export function useTTS({
         utterance.rate = rateRef.current;
         utterance.volume = volumeRef.current;
 
+        // Phantom detection: track whether speech actually happened
+        let hadBoundary = false;
+        const speakTime = Date.now();
+
         utterance.onboundary = (event: SpeechSynthesisEvent) => {
           if (event.name === 'word') {
+            hadBoundary = true;
             const charIndex = event.charIndex;
             const wordIdx = paragraph.words.findIndex(
               (w) => charIndex >= w.startOffset && charIndex < w.endOffset
@@ -124,7 +130,16 @@ export function useTTS({
         };
 
         utterance.onend = () => {
-          resolve(gen === generationRef.current ? 'ended' : 'interrupted');
+          if (gen !== generationRef.current) {
+            resolve('interrupted');
+            return;
+          }
+          // Mobile phantom: onend fires in < 200ms with no boundary events
+          if (!hadBoundary && Date.now() - speakTime < 200) {
+            resolve('phantom');
+            return;
+          }
+          resolve('ended');
         };
 
         utterance.onerror = (event) => {
@@ -161,7 +176,27 @@ export function useTTS({
           return;
         }
 
-        const result = await speakParagraph(i, gen);
+        let result = await speakParagraph(i, gen);
+
+        // Mobile phantom: retry up to 2 times with increasing delay
+        let retries = 0;
+        while (result === 'phantom' && retries < 2) {
+          retries++;
+          await new Promise((r) => setTimeout(r, 300 * retries));
+          if (gen !== generationRef.current) return;
+          result = await speakParagraph(i, gen);
+        }
+
+        // If still phantom after retries, give up gracefully
+        if (result === 'phantom') {
+          setState((prev) => ({
+            ...prev,
+            status: 'idle',
+            currentWordIndex: -1,
+            currentCharIndex: 0,
+          }));
+          return;
+        }
 
         if (result === 'interrupted') {
           return;

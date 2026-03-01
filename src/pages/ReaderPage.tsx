@@ -68,7 +68,11 @@ const ReaderPage: React.FC = () => {
     useVoices(savedVoiceName);
 
   // — TTS —
+  const playStartTime = useRef(0);
   const handleTTSEnd = useCallback(() => {
+    // Safety net: if the entire chapter "finished" in under 2 seconds,
+    // it's clearly a phantom cascade — don't auto-advance.
+    if (Date.now() - playStartTime.current < 2000) return;
     if (autoNextRef.current && hasNextRef.current) {
       autoPlayPending.current = true;
       goNextRef.current();
@@ -84,6 +88,13 @@ const ReaderPage: React.FC = () => {
   });
 
   const { status, currentParagraphIndex, currentWordIndex } = ttsState;
+
+  // Track when playback actually starts (for auto-advance cooldown)
+  useEffect(() => {
+    if (status === 'playing') {
+      playStartTime.current = Date.now();
+    }
+  }, [status]);
 
   // — Save progress to backend on pause/stop —
   const { saveNow } = useProgressSaver(status, currentParagraphIndex, currentWordIndex);
