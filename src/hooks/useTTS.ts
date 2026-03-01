@@ -78,10 +78,10 @@ export function useTTS({
 
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
-   * Includes a watchdog — if no event fires within 3s, retries once.
+   * On synthesis-failed, retries without voice (browser default) then without cancel.
    */
   const speakParagraph = useCallback(
-    (paragraphIndex: number): Promise<'ended' | 'interrupted'> => {
+    (paragraphIndex: number): Promise<'ended' | 'interrupted' | 'error'> => {
       return new Promise((resolve) => {
         const paras = paragraphsRef.current;
         if (paragraphIndex < 0 || paragraphIndex >= paras.length) {
@@ -95,10 +95,10 @@ export function useTTS({
         debugLog(`speakPara(${paragraphIndex}): "${textPreview}…"`);
 
         let settled = false;
-        let retried = false;
+        let attempt = 0; // 0 = with voice, 1 = no voice, 2 = no voice + no cancel
         let watchdog: ReturnType<typeof setTimeout> | null = null;
 
-        const finish = (result: 'ended' | 'interrupted', source: string) => {
+        const finish = (result: 'ended' | 'interrupted' | 'error', source: string) => {
           if (settled) return;
           settled = true;
           if (watchdog) clearTimeout(watchdog);
@@ -106,9 +106,9 @@ export function useTTS({
           resolve(result);
         };
 
-        const createUtterance = () => {
+        const doSpeak = (useVoice: boolean) => {
           const utt = new SpeechSynthesisUtterance(paragraph.text);
-          if (voiceRef.current) {
+          if (useVoice && voiceRef.current) {
             utt.voice = voiceRef.current;
             utt.lang = voiceRef.current.lang;
           }
@@ -116,10 +116,8 @@ export function useTTS({
           utt.volume = volumeRef.current;
 
           utt.onstart = () => {
-            debugLog(`  onstart fired`);
-            // Speech is actually playing — reset watchdog to a long timeout
-            if (watchdog) clearTimeout(watchdog);
-            watchdog = null;
+            debugLog(`  onstart (attempt ${attempt})`);
+            if (watchdog) { clearTimeout(watchdog); watchdog = null; }
           };
 
           utt.onboundary = (event: SpeechSynthesisEvent) => {
@@ -139,11 +137,49 @@ export function useTTS({
           utt.onend = () => finish('ended', 'onend');
 
           utt.onerror = (event) => {
-            debugLog(`  onerror: ${event.error}`);
-            finish('interrupted', `onerror:${event.error}`);
+            debugLog(`  onerror(attempt ${attempt}): ${event.error}`);
+
+            // User-initiated interruptions → stop the loop
+            if (event.error === 'interrupted' || event.error === 'canceled') {
+              finish('interrupted', `onerror:${event.error}`);
+              return;
+            }
+
+            // synthesis-failed or other engine error → retry
+            if (attempt < 2) {
+              attempt++;
+              debugLog(`  retrying (attempt ${attempt}, useVoice=${attempt === 1 ? 'NO' : 'NO'})…`);
+              speechSynthesis.cancel();
+              setTimeout(() => {
+                if (settled) return;
+                doSpeak(false); // retry without voice
+              }, 200);
+            } else {
+              // All retries exhausted → report error (speakFrom will skip)
+              finish('error', `onerror:${event.error}`);
+            }
           };
 
-          return utt;
+          speechSynthesis.speak(utt);
+          const s = speechSynthesis;
+          debugLog(`  speak(attempt ${attempt}): speaking=${s.speaking} pending=${s.pending} useVoice=${useVoice}`);
+
+          // Watchdog: if nothing at all happens in 5s
+          if (watchdog) clearTimeout(watchdog);
+          watchdog = setTimeout(() => {
+            if (settled) return;
+            debugLog(`  WATCHDOG(attempt ${attempt})`);
+            if (attempt < 2) {
+              attempt++;
+              speechSynthesis.cancel();
+              setTimeout(() => {
+                if (settled) return;
+                doSpeak(false);
+              }, 200);
+            } else {
+              finish('error', 'watchdog-timeout');
+            }
+          }, 5000);
         };
 
         setState((prev) => ({
@@ -153,39 +189,7 @@ export function useTTS({
           currentCharIndex: 0,
         }));
 
-        const utt = createUtterance();
-        speechSynthesis.speak(utt);
-
-        const s = speechSynthesis;
-        debugLog(`  after speak(): speaking=${s.speaking} pending=${s.pending}`);
-
-        // Watchdog: if nothing happens in 3s, the speak() was swallowed.
-        watchdog = setTimeout(() => {
-          if (settled) return;
-          const ss = speechSynthesis;
-          debugLog(`  WATCHDOG: speaking=${ss.speaking} pending=${ss.pending} retried=${retried}`);
-
-          if (!retried) {
-            retried = true;
-            // Cancel everything and try once more with a delay
-            speechSynthesis.cancel();
-            const utt2 = createUtterance();
-            setTimeout(() => {
-              if (settled) return;
-              debugLog(`  RETRY speak()`);
-              speechSynthesis.speak(utt2);
-              // Second watchdog — if this also fails, give up
-              watchdog = setTimeout(() => {
-                if (!settled) {
-                  debugLog(`  RETRY also failed — giving up`);
-                  finish('interrupted', 'watchdog-timeout');
-                }
-              }, 4000);
-            }, 200);
-          } else {
-            finish('interrupted', 'watchdog-timeout');
-          }
-        }, 3000);
+        doSpeak(true); // first attempt: with voice
       });
     },
     []
@@ -211,6 +215,12 @@ export function useTTS({
         if (result === 'interrupted') {
           debugLog(`speakFrom: interrupted at paragraph ${i}`);
           return;
+        }
+
+        if (result === 'error') {
+          // Engine error on this paragraph — skip and try the next one
+          debugLog(`speakFrom: engine error at paragraph ${i}, skipping`);
+          continue;
         }
       }
 
