@@ -3,6 +3,7 @@ export interface Book {
   title: string;
   author: string;
   cover: string;
+  startingChapterNumber: number;
   lastReadChapter: string | null;
   lastReadChapterNumber: number;
   lastReadAt: string | null;

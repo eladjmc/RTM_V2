@@ -30,6 +30,7 @@ export default function ChapterEditorPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [chapterNumber, setChapterNumber] = useState<number | null>(null);
+  const [customNumber, setCustomNumber] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [fastCopy, setFastCopy] = useState(true);
 
@@ -38,6 +39,17 @@ export default function ChapterEditorPage() {
     if (!bookId) return;
     bookService.getById(bookId).then((d: { book: { title: string } }) => setBookTitle(d.book.title)).catch(() => {});
   }, [bookId]);
+
+  // Fetch next auto chapter number for new mode
+  useEffect(() => {
+    if (isEdit || !bookId) return;
+    chapterService
+      .getNextChapterNumber(bookId)
+      .then((res: { nextChapterNumber: number }) => {
+        setCustomNumber(res.nextChapterNumber);
+      })
+      .catch(() => {});
+  }, [bookId, isEdit, savedCount]);
 
   // Load existing chapter for edit mode
   useEffect(() => {
@@ -76,15 +88,17 @@ export default function ChapterEditorPage() {
         });
         navigate(`/library`);
       } else {
-        await chapterService.create(bookId, {
+        const created = await chapterService.create(bookId, {
           title: title.trim() || undefined,
           content: content.trim(),
+          chapterNumber: customNumber ?? undefined,
         });
 
         if (andNext) {
-          // Clear form for next chapter
+          // Clear form for next chapter, auto-advance number
           setTitle('');
           setContent('');
+          setCustomNumber(created.chapterNumber + 1);
           setSavedCount((c) => c + 1);
         } else {
           navigate('/library');
@@ -141,7 +155,7 @@ export default function ChapterEditorPage() {
           Library
         </Button>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          {bookTitle} — {isEdit ? `Edit Chapter ${chapterNumber ?? ''}` : 'Add Chapter'}
+          {bookTitle} — {isEdit ? `Edit Chapter ${chapterNumber ?? ''}` : `Add Chapter${customNumber ? ` #${customNumber}` : ''}`}
         </Typography>
         {savedCount > 0 && !isEdit && (
           <Typography variant="body2" color="success.main" fontWeight={600}>
@@ -158,6 +172,24 @@ export default function ChapterEditorPage() {
 
       <Paper sx={{ p: 2 }}>
         <Stack spacing={2}>
+          {/* Chapter number — only for new chapters */}
+          {!isEdit && (
+            <Stack direction="row" spacing={2} alignItems="center">
+              <TextField
+                label="Chapter number"
+                type="number"
+                value={customNumber ?? ''}
+                onChange={(e) => setCustomNumber(Math.max(1, Number(e.target.value) || 1))}
+                size="small"
+                sx={{ width: 160 }}
+                slotProps={{ htmlInput: { min: 1 } }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Auto-assigned — edit to override
+              </Typography>
+            </Stack>
+          )}
+
           <TextField
             label="Chapter title (optional)"
             value={title}

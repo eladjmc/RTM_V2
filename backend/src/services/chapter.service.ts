@@ -9,12 +9,35 @@ export const getChapterById = (id: string) => {
   return chapterDal.findChapterById(id);
 };
 
+export const getNextChapterNumber = async (bookId: string): Promise<number> => {
+  const lastNumber = await chapterDal.findLastChapterNumber(bookId);
+  if (lastNumber === 0) {
+    const book = await bookDal.findBookById(bookId);
+    return book?.startingChapterNumber ?? 1;
+  }
+  return lastNumber + 1;
+};
+
 export const createChapter = async (
   bookId: string,
-  data: { title?: string; content: string },
+  data: { title?: string; content: string; chapterNumber?: number },
 ) => {
-  const lastNumber = await chapterDal.findLastChapterNumber(bookId);
-  const chapterNumber = lastNumber + 1;
+  let chapterNumber: number;
+
+  if (data.chapterNumber != null) {
+    // User-specified chapter number
+    chapterNumber = data.chapterNumber;
+  } else {
+    // Auto-assign: last chapter number + 1, or book's startingChapterNumber if no chapters yet
+    const lastNumber = await chapterDal.findLastChapterNumber(bookId);
+    if (lastNumber === 0) {
+      // No chapters yet — use the book's starting chapter number
+      const book = await bookDal.findBookById(bookId);
+      chapterNumber = book?.startingChapterNumber ?? 1;
+    } else {
+      chapterNumber = lastNumber + 1;
+    }
+  }
 
   const chapter = await chapterDal.createChapter({
     book: bookId,
@@ -41,12 +64,8 @@ export const deleteChapter = async (id: string) => {
   if (!chapter) return null;
 
   const bookId = chapter.book.toString();
-  const deletedNumber = chapter.chapterNumber;
 
   await chapterDal.deleteChapter(id);
-
-  // Re-number remaining chapters
-  await chapterDal.renumberChaptersAfter(bookId, deletedNumber);
 
   // Decrement book's chapter count
   await bookDal.incrementChapterCount(bookId, -1);

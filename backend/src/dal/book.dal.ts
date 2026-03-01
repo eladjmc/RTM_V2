@@ -16,6 +16,7 @@ export const createBook = (data: {
   title: string;
   author?: string;
   cover?: string;
+  startingChapterNumber?: number;
 }): Promise<IBook> => {
   return Book.create(data);
 };

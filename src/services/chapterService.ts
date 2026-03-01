@@ -5,9 +5,12 @@ export const chapterService = {
   getByBook: (bookId: string) =>
     api.get<ChapterSummary[]>(`/api/books/${bookId}/chapters`),
 
+  getNextChapterNumber: (bookId: string) =>
+    api.get<{ nextChapterNumber: number }>(`/api/books/${bookId}/chapters/next-number`),
+
   getById: (id: string) => api.get<Chapter>(`/api/chapters/${id}`),
 
-  create: (bookId: string, data: { title?: string; content: string }) =>
+  create: (bookId: string, data: { title?: string; content: string; chapterNumber?: number }) =>
     api.post<Chapter>(`/api/books/${bookId}/chapters`, data),
 
   update: (id: string, data: { title?: string; content?: string }) =>

@@ -16,9 +16,9 @@ import { AddPhotoAlternate, Close } from '@mui/icons-material';
 interface AddBookDialogProps {
   open: boolean;
   onClose: () => void;
-  onSave: (data: { title: string; author?: string; cover?: string }) => Promise<void>;
+  onSave: (data: { title: string; author?: string; cover?: string; startingChapterNumber?: number }) => Promise<void>;
   /** When provided, dialog opens in edit mode pre-filled with this book's data */
-  initialData?: { title: string; author?: string; cover?: string };
+  initialData?: { title: string; author?: string; cover?: string; startingChapterNumber?: number };
 }
 
 /** Max output dimensions for cover thumbnails (matches card 1:1 ratio) */
@@ -65,6 +65,7 @@ function compressCover(file: File): Promise<string> {
 export default function AddBookDialog({ open, onClose, onSave, initialData }: AddBookDialogProps) {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [startingChapter, setStartingChapter] = useState(1);
   const [cover, setCover] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -76,6 +77,7 @@ export default function AddBookDialog({ open, onClose, onSave, initialData }: Ad
       setTitle(initialData.title);
       setAuthor(initialData.author ?? '');
       setCover(initialData.cover);
+      setStartingChapter(initialData.startingChapterNumber ?? 1);
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -101,9 +103,11 @@ export default function AddBookDialog({ open, onClose, onSave, initialData }: Ad
         title: title.trim(),
         author: author.trim() || undefined,
         cover: cover || undefined,
+        startingChapterNumber: startingChapter !== 1 ? startingChapter : undefined,
       });
       setTitle('');
       setAuthor('');
+      setStartingChapter(1);
       setCover(undefined);
       onClose();
     } finally {
@@ -115,6 +119,7 @@ export default function AddBookDialog({ open, onClose, onSave, initialData }: Ad
     if (loading) return;
     setTitle('');
     setAuthor('');
+    setStartingChapter(1);
     setCover(undefined);
     onClose();
   };
@@ -139,6 +144,18 @@ export default function AddBookDialog({ open, onClose, onSave, initialData }: Ad
               onChange={(e) => setAuthor(e.target.value)}
               size="small"
             />
+
+            {/* Starting chapter — only show when creating a new book */}
+            {!isEdit && (
+              <TextField
+                label="Starting chapter number"
+                type="number"
+                value={startingChapter}
+                onChange={(e) => setStartingChapter(Math.max(1, Number(e.target.value) || 1))}
+                size="small"
+                slotProps={{ htmlInput: { min: 1 } }}
+              />
+            )}
 
             {/* Cover image upload */}
             <input

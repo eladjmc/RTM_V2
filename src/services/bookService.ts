@@ -6,7 +6,7 @@ export const bookService = {
 
   getById: (id: string) => api.get<BookDetail>(`/api/books/${id}`),
 
-  create: (data: { title: string; author?: string; cover?: string }) =>
+  create: (data: { title: string; author?: string; cover?: string; startingChapterNumber?: number }) =>
     api.post<Book>('/api/books', data),
 
   update: (id: string, data: { title?: string; author?: string; cover?: string }) =>

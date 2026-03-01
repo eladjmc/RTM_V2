@@ -8,15 +8,18 @@ import {
   Box,
   Typography,
   IconButton,
+  Switch,
 } from '@mui/material';
 import {
   Headphones,
   MenuBook,
   Logout,
   Close,
+  SkipNext,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface NavDrawerProps {
   open: boolean;
@@ -27,6 +30,7 @@ export default function NavDrawer({ open, onClose }: NavDrawerProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const [autoNext, setAutoNext] = useLocalStorage('rtm-auto-next-chapter', true);
   const isLibrary = location.pathname.startsWith('/library');
 
   const handleNav = (path: string) => {
@@ -67,6 +71,16 @@ export default function NavDrawer({ open, onClose }: NavDrawerProps) {
         >
           <ListItemIcon><MenuBook /></ListItemIcon>
           <ListItemText primary="Library" />
+        </ListItemButton>
+      </List>
+
+      <Divider />
+
+      <List>
+        <ListItemButton onClick={() => setAutoNext((p) => !p)}>
+          <ListItemIcon><SkipNext color={autoNext ? 'primary' : 'inherit'} /></ListItemIcon>
+          <ListItemText primary="Auto-next chapter" />
+          <Switch edge="end" size="small" checked={autoNext} tabIndex={-1} />
         </ListItemButton>
       </List>
 

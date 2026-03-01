@@ -19,14 +19,19 @@ export const getBookById = async (req: Request, res: Response): Promise<void> =>
 };
 
 export const createBook = async (req: Request, res: Response): Promise<void> => {
-  const { title, author, cover } = req.body;
+  const { title, author, cover, startingChapterNumber } = req.body;
 
   if (!title) {
     res.status(400).json({ error: 'Title is required' });
     return;
   }
 
-  const book = await bookService.createBook({ title, author, cover });
+  const book = await bookService.createBook({
+    title,
+    author,
+    cover,
+    startingChapterNumber: startingChapterNumber ? Number(startingChapterNumber) : undefined,
+  });
   res.status(201).json(book);
 };
 
