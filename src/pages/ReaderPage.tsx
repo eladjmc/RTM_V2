@@ -104,7 +104,8 @@ const ReaderPage: React.FC = () => {
       prevChapterId.current = chId;
       if (autoPlayPending.current && paragraphs.length > 0) {
         autoPlayPending.current = false;
-        // Small delay so TTS state settles after chapter swap
+        // Reset to paragraph 0 then play — prevents speakFrom using stale index
+        ttsControls.jumpToParagraph(0);
         setTimeout(() => ttsControls.play(), 100);
       }
     }
