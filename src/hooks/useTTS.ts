@@ -78,7 +78,7 @@ export function useTTS({
 
   /**
    * Speak a single paragraph. Returns a promise that resolves when done.
-   * On synthesis-failed, retries without voice (browser default) then without cancel.
+   * On synthesis-failed: retries with different voices, then engine warm-up.
    */
   const speakParagraph = useCallback(
     (paragraphIndex: number): Promise<'ended' | 'interrupted' | 'error'> => {
@@ -95,8 +95,22 @@ export function useTTS({
         debugLog(`speakPara(${paragraphIndex}): "${textPreview}…"`);
 
         let settled = false;
-        let attempt = 0; // 0 = with voice, 1 = no voice, 2 = no voice + no cancel
+        let attempt = 0;
         let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+        // Build a list of voices to try: selected → other en voices → no voice
+        const voicesToTry: (SpeechSynthesisVoice | null)[] = [];
+        if (voiceRef.current) voicesToTry.push(voiceRef.current);
+        const allVoices = speechSynthesis.getVoices();
+        const otherEnVoices = allVoices
+          .filter((v) => v.lang.startsWith('en') && v !== voiceRef.current)
+          .sort((a, b) => {
+            // Prefer local voices (more likely to work offline)
+            if (a.localService !== b.localService) return a.localService ? -1 : 1;
+            return 0;
+          });
+        for (const v of otherEnVoices) voicesToTry.push(v);
+        voicesToTry.push(null); // last resort: no voice at all
 
         const finish = (result: 'ended' | 'interrupted' | 'error', source: string) => {
           if (settled) return;
@@ -106,17 +120,19 @@ export function useTTS({
           resolve(result);
         };
 
-        const doSpeak = (useVoice: boolean) => {
+        const doSpeak = (voiceToUse: SpeechSynthesisVoice | null) => {
           const utt = new SpeechSynthesisUtterance(paragraph.text);
-          if (useVoice && voiceRef.current) {
-            utt.voice = voiceRef.current;
-            utt.lang = voiceRef.current.lang;
+          if (voiceToUse) {
+            utt.voice = voiceToUse;
+            utt.lang = voiceToUse.lang;
+          } else {
+            utt.lang = 'en-US';
           }
           utt.rate = rateRef.current;
           utt.volume = volumeRef.current;
 
           utt.onstart = () => {
-            debugLog(`  onstart (attempt ${attempt})`);
+            debugLog(`  onstart (attempt ${attempt}, voice=${voiceToUse?.name ?? 'default'})`);
             if (watchdog) { clearTimeout(watchdog); watchdog = null; }
           };
 
@@ -134,10 +150,10 @@ export function useTTS({
             }
           };
 
-          utt.onend = () => finish('ended', 'onend');
+          utt.onend = () => finish('ended', `onend(voice=${voiceToUse?.name ?? 'default'})`);
 
           utt.onerror = (event) => {
-            debugLog(`  onerror(attempt ${attempt}): ${event.error}`);
+            debugLog(`  onerror(attempt ${attempt}): ${event.error} voice=${voiceToUse?.name ?? 'default'}`);
 
             // User-initiated interruptions → stop the loop
             if (event.error === 'interrupted' || event.error === 'canceled') {
@@ -145,41 +161,57 @@ export function useTTS({
               return;
             }
 
-            // synthesis-failed or other engine error → retry
-            if (attempt < 2) {
-              attempt++;
-              debugLog(`  retrying (attempt ${attempt}, useVoice=${attempt === 1 ? 'NO' : 'NO'})…`);
-              speechSynthesis.cancel();
-              setTimeout(() => {
-                if (settled) return;
-                doSpeak(false); // retry without voice
-              }, 200);
-            } else {
-              // All retries exhausted → report error (speakFrom will skip)
-              finish('error', `onerror:${event.error}`);
-            }
+            // synthesis-failed or other engine error → try next voice
+            tryNext();
           };
 
           speechSynthesis.speak(utt);
-          const s = speechSynthesis;
-          debugLog(`  speak(attempt ${attempt}): speaking=${s.speaking} pending=${s.pending} useVoice=${useVoice}`);
+          debugLog(`  speak(attempt ${attempt}): voice=${voiceToUse?.name ?? 'default'} speaking=${speechSynthesis.speaking}`);
 
           // Watchdog: if nothing at all happens in 5s
           if (watchdog) clearTimeout(watchdog);
           watchdog = setTimeout(() => {
             if (settled) return;
             debugLog(`  WATCHDOG(attempt ${attempt})`);
-            if (attempt < 2) {
-              attempt++;
-              speechSynthesis.cancel();
-              setTimeout(() => {
-                if (settled) return;
-                doSpeak(false);
-              }, 200);
-            } else {
-              finish('error', 'watchdog-timeout');
-            }
+            tryNext();
           }, 5000);
+        };
+
+        const MAX_ATTEMPTS = Math.min(voicesToTry.length, 6); // cap retries
+
+        const tryNext = () => {
+          attempt++;
+          if (attempt >= MAX_ATTEMPTS) {
+            // All voices exhausted — try engine warm-up as last resort
+            debugLog(`  All ${attempt} voices failed. Warm-up reset…`);
+            speechSynthesis.cancel();
+            const warmUp = new SpeechSynthesisUtterance('.');
+            warmUp.volume = 0.01;
+            warmUp.onend = () => {
+              if (settled) return;
+              debugLog(`  Warm-up done, final retry`);
+              doSpeak(voicesToTry[0]); // retry original voice after warm-up
+              // If this also fails, give up
+              const prevOnerror = attempt;
+              setTimeout(() => {
+                if (!settled && attempt === prevOnerror) {
+                  finish('error', 'all-voices-failed');
+                }
+              }, 5000);
+            };
+            warmUp.onerror = () => {
+              if (!settled) finish('error', 'warmup-failed');
+            };
+            speechSynthesis.speak(warmUp);
+            return;
+          }
+          const nextVoice = voicesToTry[attempt] ?? null;
+          debugLog(`  trying voice ${attempt}/${MAX_ATTEMPTS}: ${nextVoice?.name ?? 'default'}`);
+          speechSynthesis.cancel();
+          setTimeout(() => {
+            if (settled) return;
+            doSpeak(nextVoice);
+          }, 200);
         };
 
         setState((prev) => ({
@@ -189,7 +221,7 @@ export function useTTS({
           currentCharIndex: 0,
         }));
 
-        doSpeak(true); // first attempt: with voice
+        doSpeak(voicesToTry[0] ?? null); // first attempt: preferred voice
       });
     },
     []
