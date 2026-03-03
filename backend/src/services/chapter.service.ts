@@ -46,9 +46,6 @@ export const createChapter = async (
     content: data.content,
   });
 
-  // Update book's chapter count
-  await bookDal.incrementChapterCount(bookId, 1);
-
   return chapter;
 };
 
@@ -66,9 +63,6 @@ export const deleteChapter = async (id: string) => {
   const bookId = chapter.book.toString();
 
   await chapterDal.deleteChapter(id);
-
-  // Decrement book's chapter count
-  await bookDal.incrementChapterCount(bookId, -1);
 
   return chapter;
 };

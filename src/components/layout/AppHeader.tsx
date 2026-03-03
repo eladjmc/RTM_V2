@@ -17,6 +17,7 @@ import {
   MenuBook,
   Logout,
   SkipNext,
+  CloudDownload,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -36,6 +37,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
   const location = useLocation();
   const { logout } = useAuth();
   const isLibrary = location.pathname.startsWith('/library');
+  const isScraper = location.pathname.startsWith('/scraper');
+  const isLocal = import.meta.env.VITE_ENV === 'local';
+  const isReader = !isLibrary && !isScraper;
 
   return (
     <AppBar position="sticky" color="default" elevation={1}>
@@ -59,10 +63,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
             size="small"
             startIcon={<Headphones />}
             onClick={() => navigate('/')}
-            variant={!isLibrary ? 'contained' : 'text'}
-            color={!isLibrary ? 'primary' : 'inherit'}
+            variant={isReader ? 'contained' : 'text'}
+            color={isReader ? 'primary' : 'inherit'}
             disableElevation
-            sx={{ textTransform: 'none', fontWeight: !isLibrary ? 700 : 400 }}
+            sx={{ textTransform: 'none', fontWeight: isReader ? 700 : 400 }}
           >
             Reader
           </Button>
@@ -77,6 +81,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuClick }) => {
           >
             Library
           </Button>
+
+          {isLocal && (
+            <Button
+              size="small"
+              startIcon={<CloudDownload />}
+              onClick={() => navigate('/scraper')}
+              variant={isScraper ? 'contained' : 'text'}
+              color={isScraper ? 'primary' : 'inherit'}
+              disableElevation
+              sx={{ textTransform: 'none', fontWeight: isScraper ? 700 : 400 }}
+            >
+              Scraper
+            </Button>
+          )}
 
           <Box sx={{ width: 8 }} />
 

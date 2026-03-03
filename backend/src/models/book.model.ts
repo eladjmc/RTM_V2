@@ -35,10 +35,21 @@ const bookSchema = new Schema<IBook>(
       paragraphIndex: { type: Number, default: 0 },
       wordIndex: { type: Number, default: 0 },
     },
-    chapterCount: { type: Number, default: 0 },
   },
   { timestamps: true },
 );
+
+// Virtual: compute chapterCount from the chapters collection
+bookSchema.virtual('chapterCount', {
+  ref: 'Chapter',
+  localField: '_id',
+  foreignField: 'book',
+  count: true,
+});
+
+// Ensure virtuals are included in JSON and Object output
+bookSchema.set('toJSON', { virtuals: true });
+bookSchema.set('toObject', { virtuals: true });
 
 const Book = mongoose.model<IBook>('Book', bookSchema);
 export default Book;

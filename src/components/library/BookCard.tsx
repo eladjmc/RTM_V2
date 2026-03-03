@@ -29,112 +29,125 @@ export default function BookCard({ book, onClick, onEdit, onDelete, onPlay }: Bo
   return (
     <Card
       sx={{
-        width: { xs: 160, sm: 150 },
+        width: { xs: '100%', sm: 280, md: 340 },
         transition: 'transform 0.15s, box-shadow 0.15s',
-        '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
-        overflow: 'visible',
+        '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 },
+        overflow: 'hidden',
+        borderRadius: 2,
       }}
     >
       <CardActionArea onClick={() => onClick(book)} sx={{ p: 0 }}>
-        {/* Book cover */}
-        <Box
-          sx={{
-            position: 'relative',
-            width: '100%',
-            aspectRatio: '3 / 3',
-            borderRadius: '4px 8px 8px 4px',
-            overflow: 'hidden',
-            // Spine shadow
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              bottom: 0,
-              width: 6,
-              background: 'linear-gradient(to right, rgba(0,0,0,0.25), transparent)',
-              zIndex: 1,
-            },
-          }}
-        >
-          {hasCover ? (
-            <Box
-              component="img"
-              src={book.cover}
-              alt={book.title}
-              sx={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                display: 'block',
-              }}
-            />
-          ) : (
-            /* Placeholder cover */
-            <Box
-              sx={{
-                width: '100%',
-                height: '100%',
-                bgcolor: bg,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1,
-                px: 1.5,
-              }}
-            >
-              <AutoStories sx={{ fontSize: 36, color: 'rgba(255,255,255,0.7)' }} />
-              <Typography
-                variant="caption"
+        {/* Top row: cover | details */}
+        <Stack direction="row" sx={{ height: { xs: 140, md: 155 } }}>
+          {/* Cover */}
+          <Box
+            sx={{
+              width: { xs: 100, md: 115 },
+              minWidth: { xs: 100, md: 115 },
+              height: '100%',
+              position: 'relative',
+              overflow: 'hidden',
+              // Spine shadow
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: 4,
+                background: 'linear-gradient(to left, rgba(0,0,0,0.15), transparent)',
+                zIndex: 1,
+              },
+            }}
+          >
+            {hasCover ? (
+              <Box
+                component="img"
+                src={book.cover}
+                alt={book.title}
                 sx={{
-                  color: 'white',
-                  fontWeight: 600,
-                  textAlign: 'center',
-                  lineHeight: 1.2,
-                  display: '-webkit-box',
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                }}
+              />
+            ) : (
+              <Box
+                sx={{
+                  width: '100%',
+                  height: '100%',
+                  bgcolor: bg,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.5,
+                  px: 1,
                 }}
               >
-                {book.title}
-              </Typography>
-            </Box>
-          )}
-        </Box>
+                <AutoStories sx={{ fontSize: 28, color: 'rgba(255,255,255,0.7)' }} />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'white',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    lineHeight: 1.2,
+                    fontSize: '0.65rem',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {book.title}
+                </Typography>
+              </Box>
+            )}
+          </Box>
 
-        {/* Info below the cover */}
-        <Box sx={{ px: 1, py: 1, textAlign: 'center' }}>
-          <Typography
-            variant="subtitle2"
-            fontWeight={600}
-            noWrap
-            title={book.title}
-            sx={{ lineHeight: 1.3 }}
-          >
-            {book.title}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" display="block">
-            {book.chapterCount} chapter{book.chapterCount !== 1 ? 's' : ''}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Current Ch: {book.lastReadChapterNumber ? book.lastReadChapterNumber : '—'}
-          </Typography>
-        </Box>
+          {/* Details */}
+          <Box sx={{ flex: 1, py: 1.5, px: 1.5, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minWidth: 0, textAlign: 'center' }}>
+            <Typography
+              variant="subtitle2"
+              fontWeight={700}
+              title={book.title}
+              sx={{
+                lineHeight: 1.3,
+                mb: 0.5,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {book.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ lineHeight: 1.4 }}>
+              {book.chapterCount} chapter{book.chapterCount !== 1 ? 's' : ''}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+              Current Ch: {book.lastReadChapterNumber ?? '—'}
+            </Typography>
+          </Box>
+        </Stack>
       </CardActionArea>
 
-      {/* Action buttons */}
+      {/* Action buttons at the bottom */}
       <Stack
         direction="row"
         justifyContent="center"
-        spacing={0.5}
-        sx={{ pb: 0.5 }}
+        spacing={0}
+        sx={{
+          borderTop: 1,
+          borderColor: 'divider',
+        }}
       >
         <Tooltip title={book.chapterCount === 0 ? 'No chapters' : 'Continue reading'}>
           <span>
             <IconButton
-              size="small"
+              size="medium"
               disabled={book.chapterCount === 0}
               onClick={(e) => { e.stopPropagation(); onPlay(book); }}
               sx={{ color: 'primary.main' }}
@@ -145,7 +158,7 @@ export default function BookCard({ book, onClick, onEdit, onDelete, onPlay }: Bo
         </Tooltip>
         <Tooltip title="Edit">
           <IconButton
-            size="small"
+            size="medium"
             onClick={(e) => { e.stopPropagation(); onEdit(book); }}
             sx={{ color: 'text.secondary' }}
           >
@@ -154,7 +167,7 @@ export default function BookCard({ book, onClick, onEdit, onDelete, onPlay }: Bo
         </Tooltip>
         <Tooltip title="Delete">
           <IconButton
-            size="small"
+            size="medium"
             onClick={(e) => { e.stopPropagation(); onDelete(book); }}
             sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
           >

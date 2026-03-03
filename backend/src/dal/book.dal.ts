@@ -3,13 +3,14 @@ import type { Types } from 'mongoose';
 
 export const findAllBooks = (): Promise<IBook[]> => {
   return Book.find()
-    .select('title author cover chapterCount lastReadChapter lastReadChapterNumber lastReadAt lastReadPosition updatedAt')
+    .select('title author cover lastReadChapter lastReadChapterNumber lastReadAt lastReadPosition updatedAt chapterCount')
+    .populate('chapterCount')
     .sort({ updatedAt: -1 })
     .exec();
 };
 
 export const findBookById = (id: string): Promise<IBook | null> => {
-  return Book.findById(id).exec();
+  return Book.findById(id).populate('chapterCount').exec();
 };
 
 export const createBook = (data: {
@@ -42,15 +43,4 @@ export const updateReadingProgress = (
   },
 ): Promise<IBook | null> => {
   return Book.findByIdAndUpdate(id, data, { new: true }).exec();
-};
-
-export const incrementChapterCount = (
-  bookId: string,
-  amount: number,
-): Promise<IBook | null> => {
-  return Book.findByIdAndUpdate(
-    bookId,
-    { $inc: { chapterCount: amount } },
-    { new: true },
-  ).exec();
 };

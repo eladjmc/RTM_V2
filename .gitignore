@@ -6,16 +6,17 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
+.env
 node_modules
 dist
 dist-ssr
 *.local
 
-# Backend
-backend/node_modules
-backend/dist
+# Environment files
+.env
+.env.*
 backend/.env
+scraper_api/.env
 
 # Editor directories and files
 .vscode/*
