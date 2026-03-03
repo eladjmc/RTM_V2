@@ -12,10 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Backend
-backend/node_modules
-backend/dist
+# Environment files
+.env
+.env.*
 backend/.env
+scraper_api/.env
 
 # Editor directories and files
 .vscode/*

@@ -78,18 +78,20 @@ export default function LibraryPage() {
   };
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1200, mx: 'auto', width: '100%', overflow: 'auto', flex: 1 }}>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
-        Library
-      </Typography>
+    <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1600, mx: 'auto', width: '100%', overflow: 'auto', flex: 1 }}>
+      <Box sx={{ maxWidth: 1200, mx: { xs: 'auto', lg: 0 } }}>
+        <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
+          Library
+        </Typography>
 
-      <SearchSortBar
-        search={search}
-        onSearchChange={setSearch}
-        sort={sort}
-        onSortChange={setSort}
-        onAdd={() => setAddOpen(true)}
-      />
+        <SearchSortBar
+          search={search}
+          onSearchChange={setSearch}
+          sort={sort}
+          onSortChange={setSort}
+          onAdd={() => setAddOpen(true)}
+        />
+      </Box>
 
       {loading ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>

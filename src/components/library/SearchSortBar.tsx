@@ -6,6 +6,7 @@ import {
   Stack,
   Tooltip,
   Button,
+  Box,
 } from '@mui/material';
 import {
   Search,
@@ -76,21 +77,25 @@ export default function SearchSortBar({
           <Tooltip title="Last added">
             <Schedule fontSize="small" />
           </Tooltip>
+          <Box component="span" sx={{ display: { xs: 'none', md: 'inline' }, ml: 0.5, fontSize: '0.75rem' }}>Added</Box>
         </ToggleButton>
         <ToggleButton value="read">
           <Tooltip title="Last read">
             <AccessTime fontSize="small" />
           </Tooltip>
+          <Box component="span" sx={{ display: { xs: 'none', md: 'inline' }, ml: 0.5, fontSize: '0.75rem' }}>Read</Box>
         </ToggleButton>
         <ToggleButton value="name">
           <Tooltip title="Name">
             <SortByAlpha fontSize="small" />
           </Tooltip>
+          <Box component="span" sx={{ display: { xs: 'none', md: 'inline' }, ml: 0.5, fontSize: '0.75rem' }}>Name</Box>
         </ToggleButton>
         <ToggleButton value="chapters">
           <Tooltip title="Chapters">
             <LibraryBooks fontSize="small" />
           </Tooltip>
+          <Box component="span" sx={{ display: { xs: 'none', md: 'inline' }, ml: 0.5, fontSize: '0.75rem' }}>Chapters</Box>
         </ToggleButton>
       </ToggleButtonGroup>
     </Stack>

@@ -5,7 +5,7 @@ export type SortOption = 'added' | 'name' | 'chapters' | 'read';
 
 export function useFilteredBooks(books: Book[]) {
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortOption>('added');
+  const [sort, setSort] = useState<SortOption>('read');
 
   const displayedBooks = useMemo(() => {
     let filtered = books;
