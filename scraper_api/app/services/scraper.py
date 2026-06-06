@@ -95,6 +95,10 @@ def _parse_chapter_page(html: str, base_url: str) -> dict:
 
     # ── Next chapter link ─────────────────────────────────────────────────
     next_btn = soup.select_one("#next_chap")
+    # Fallback: some pages use data-chapter-nav="next" instead of #next_chap
+    if not next_btn or not next_btn.get("href"):
+        next_btn = soup.select_one('a[data-chapter-nav="next"]')
+
     next_url: str | None = None
     if next_btn and next_btn.get("href"):
         href = next_btn["href"]
