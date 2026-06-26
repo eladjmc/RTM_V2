@@ -4,18 +4,24 @@ import { Box, Alert } from '@mui/material';
 import { useReaderSettings } from '../hooks/useReaderSettings';
 import { useVoices } from '../hooks/useVoices';
 import { useTTS } from '../hooks/useTTS';
+import { useServerTTS } from '../hooks/useServerTTS';
+import { useMediaSession } from '../hooks/useMediaSession';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { parseText } from '../utils/textParser';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { chapterService } from '../services/chapterService';
 
 import SideTab from '../components/layout/SideTab';
 import PlaybackControls from '../components/playback/PlaybackControls';
 import ReadingPane from '../components/reader/ReadingPane';
 import ReaderBottomBar from '../components/reader/ReaderBottomBar';
 import DownloadAudioModal from '../components/reader/DownloadAudioModal';
+import ListenOfflinePlayer from '../components/reader/ListenOfflinePlayer';
 import SettingsDrawer from '../components/settings/SettingsDrawer';
 import { useReadingContext } from '../hooks/useReadingContext';
 import { useProgressSaver } from '../hooks/useProgressSaver';
+import type { NextChapterPrefetch } from '../hooks/useServerTTS';
+import type { ListenOfflineJobConfig } from '../hooks/useListenOfflineJob';
 
 const ReaderPage: React.FC = () => {
   const settings = useReaderSettings();
@@ -34,7 +40,15 @@ const ReaderPage: React.FC = () => {
     setSavedParagraphIndex,
     fontSize,
     setFontSize,
+    playbackEngine,
+    setPlaybackEngine,
+    serverProvider,
+    setServerProvider,
   } = settings;
+
+  const isServerMode = playbackEngine === 'server';
+  const serverVoice =
+    serverProvider === 'sapi' ? 'Microsoft Zira Desktop' : 'en-US-AriaNeural';
 
   // Stable ref for save callback — avoids circular hook dependency
   const saveRef = useRef<() => void>(() => {});
@@ -58,20 +72,68 @@ const ReaderPage: React.FC = () => {
   // — Drawer —
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  const [listenConfig, setListenConfig] = useState<ListenOfflineJobConfig | null>(null);
+  const [listenPlayerOpen, setListenPlayerOpen] = useState(false);
 
   // — Derived —
   const paragraphs = useMemo(() => parseText(text), [text]);
   const hasText = paragraphs.length > 0;
 
+  const cacheContext = useMemo(
+    () => ({
+      bookId: readingCtx?.bookId ?? 'manual',
+      chapterId: readingCtx?.chapterId ?? `manual-${text.length}`,
+    }),
+    [readingCtx?.bookId, readingCtx?.chapterId, text.length],
+  );
+
+  // — Next chapter text prefetch (server mode) —
+  const [nextChapterPrefetch, setNextChapterPrefetch] = useState<NextChapterPrefetch | null>(null);
+
+  useEffect(() => {
+    if (!isServerMode || !readingCtx || !hasNext) {
+      setNextChapterPrefetch(null);
+      return;
+    }
+
+    const nextChapter = readingCtx.chapters[readingCtx.chapters.findIndex((c) => c._id === readingCtx.chapterId) + 1];
+    if (!nextChapter) {
+      setNextChapterPrefetch(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const chapter = await chapterService.getById(nextChapter._id);
+        if (cancelled) return;
+        const nextParagraphs = parseText(chapter.content);
+        if (nextParagraphs.length === 0) {
+          setNextChapterPrefetch(null);
+          return;
+        }
+        setNextChapterPrefetch({
+          chapterId: nextChapter._id,
+          paragraphText: nextParagraphs[0].text,
+        });
+      } catch {
+        if (!cancelled) setNextChapterPrefetch(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isServerMode, readingCtx, hasNext]);
+
   // — Voices —
   const { voices, selectedVoice, selectVoice, isSupported } =
     useVoices(savedVoiceName);
 
-  // — TTS —
+  // — TTS (both hooks always called; active one selected by playbackEngine) —
   const playStartTime = useRef(0);
   const handleTTSEnd = useCallback(() => {
-    // Safety net: if the entire chapter "finished" in under 2 seconds,
-    // it's clearly a phantom cascade — don't auto-advance.
     if (Date.now() - playStartTime.current < 2000) return;
     if (autoNextRef.current && hasNextRef.current) {
       autoPlayPending.current = true;
@@ -79,7 +141,7 @@ const ReaderPage: React.FC = () => {
     }
   }, []);
 
-  const [ttsState, ttsControls] = useTTS({
+  const [browserState, browserControls] = useTTS({
     paragraphs,
     voice: selectedVoice,
     rate: speed,
@@ -87,11 +149,49 @@ const ReaderPage: React.FC = () => {
     onEnd: handleTTSEnd,
   });
 
+  const [serverState, serverControls] = useServerTTS({
+    enabled: isServerMode,
+    paragraphs,
+    provider: serverProvider,
+    voice: serverVoice,
+    rate: speed,
+    volume: isMuted ? 0 : volume,
+    cacheContext,
+    nextChapterPrefetch,
+    onEnd: handleTTSEnd,
+  });
+
+  const ttsState = isServerMode ? serverState : browserState;
+  const ttsControls = isServerMode ? serverControls : browserControls;
   const { status, currentParagraphIndex, currentWordIndex } = ttsState;
+
+  const mediaSessionControls = useMemo(
+    () => ({
+      play: () => {
+        if (status === 'paused') ttsControls.resume();
+        else ttsControls.play();
+      },
+      pause: () => ttsControls.pause(),
+      skipForward: () => ttsControls.skipForward(),
+      skipBackward: () => ttsControls.skipBackward(),
+    }),
+    [ttsControls, status],
+  );
+
+  useMediaSession(
+    isServerMode,
+    {
+      title: readingCtx?.chapterTitle ?? 'Reading',
+      artist: readingCtx?.bookTitle ?? 'RTM Reader',
+      album: readingCtx?.bookTitle,
+    },
+    mediaSessionControls,
+    status === 'playing' || status === 'buffering',
+  );
 
   // Track when playback actually starts (for auto-advance cooldown)
   useEffect(() => {
-    if (status === 'playing') {
+    if (status === 'playing' || status === 'buffering') {
       playStartTime.current = Date.now();
     }
   }, [status]);
@@ -105,7 +205,7 @@ const ReaderPage: React.FC = () => {
   }, [saveNow]);
 
   // — Wake lock —
-  useWakeLock(status === 'playing');
+  useWakeLock(status === 'playing' || status === 'buffering');
 
   // — Auto-play after chapter navigation —
   const prevChapterId = useRef(readingCtx?.chapterId);
@@ -142,7 +242,7 @@ const ReaderPage: React.FC = () => {
 
   // — Auto-close drawer on play —
   useEffect(() => {
-    if (status === 'playing') setDrawerOpen(false);
+    if (status === 'playing' || status === 'buffering') setDrawerOpen(false);
   }, [status]);
 
   // — Handlers —
@@ -175,17 +275,30 @@ const ReaderPage: React.FC = () => {
 
   const handleParagraphClick = useCallback(
     (index: number) => {
-      if (status !== 'playing') ttsControls.jumpToParagraph(index);
+      if (status !== 'playing' && status !== 'buffering') ttsControls.jumpToParagraph(index);
     },
     [status, ttsControls]
   );
 
+  const handleListenOffline = useCallback((config: ListenOfflineJobConfig) => {
+    setListenConfig(config);
+    setListenPlayerOpen(true);
+  }, []);
+
+  const handleCloseListenPlayer = useCallback(() => {
+    setListenPlayerOpen(false);
+    setListenConfig(null);
+  }, []);
+
+  const statusHint =
+    isServerMode && status === 'buffering' ? 'Buffering…' : undefined;
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {!isSupported && (
+      {!isServerMode && !isSupported && (
         <Alert severity="error" sx={{ mx: 2, mt: 2 }}>
           Your browser does not support the Web Speech API. Please use Chrome or
-          Edge for the best experience.
+          Edge for the best experience, or switch to Server (Zira) playback in Settings.
         </Alert>
       )}
 
@@ -208,6 +321,8 @@ const ReaderPage: React.FC = () => {
         onVolumeChange={setVolume}
         isMuted={isMuted}
         onMuteToggle={handleMuteToggle}
+        showVoicePicker={!isServerMode}
+        statusHint={statusHint}
       />
 
       <Box sx={{ flexGrow: 1, overflow: 'auto', position: 'relative', minHeight: 0 }}>
@@ -220,7 +335,7 @@ const ReaderPage: React.FC = () => {
         <ReadingPane
           paragraphs={paragraphs}
           currentParagraphIndex={currentParagraphIndex}
-          currentWordIndex={currentWordIndex}
+          currentWordIndex={isServerMode ? -1 : currentWordIndex}
           status={status}
           onParagraphClick={handleParagraphClick}
           fontSize={fontSize}
@@ -233,7 +348,7 @@ const ReaderPage: React.FC = () => {
         text={text}
         onTextChange={handleTextChange}
         onClear={handleClear}
-        textDisabled={status === 'playing'}
+        textDisabled={status === 'playing' || status === 'buffering'}
         status={status}
         onPlay={ttsControls.play}
         onStop={ttsControls.stop}
@@ -249,6 +364,10 @@ const ReaderPage: React.FC = () => {
         onMuteToggle={handleMuteToggle}
         fontSize={fontSize}
         onFontSizeChange={setFontSize}
+        playbackEngine={playbackEngine}
+        onPlaybackEngineChange={setPlaybackEngine}
+        serverProvider={serverProvider}
+        onServerProviderChange={setServerProvider}
       />
 
       <ReaderBottomBar
@@ -256,7 +375,7 @@ const ReaderPage: React.FC = () => {
         currentChapterId={readingCtx?.chapterId ?? null}
         hasPrev={hasPrev}
         hasNext={hasNext}
-        isPlaying={status === 'playing'}
+        isPlaying={status === 'playing' || status === 'buffering'}
         onPrev={goPrev}
         onNext={goNext}
         onChapterSelect={goToChapter}
@@ -271,8 +390,15 @@ const ReaderPage: React.FC = () => {
           bookTitle={readingCtx.bookTitle}
           chapters={readingCtx.chapters}
           currentChapterNumber={readingCtx.chapterNumber}
+          onListenOffline={handleListenOffline}
         />
       )}
+
+      <ListenOfflinePlayer
+        open={listenPlayerOpen}
+        config={listenConfig}
+        onClose={handleCloseListenPlayer}
+      />
     </Box>
   );
 };

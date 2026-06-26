@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import type { ParagraphInfo } from '../utils/textParser';
 
-export type PlaybackStatus = 'idle' | 'playing' | 'paused';
+export type PlaybackStatus = 'idle' | 'playing' | 'paused' | 'buffering';
 
 export interface TTSState {
   status: PlaybackStatus;

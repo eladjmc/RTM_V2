@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as ttsController from '../controllers/tts.controller.js';
+import * as listenJobController from '../controllers/listen-job.controller.js';
 import auth from '../middleware/auth.js';
 
 const router = Router();
@@ -35,6 +36,47 @@ router.use(auth);
  *                     type: string
  */
 router.get('/voices', ttsController.getVoices);
+
+/**
+ * @swagger
+ * /tts/synthesize-chunk:
+ *   post:
+ *     tags: [TTS]
+ *     summary: Synthesise a single text chunk for server playback
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [text]
+ *             properties:
+ *               text:
+ *                 type: string
+ *               provider:
+ *                 type: string
+ *                 enum: [sapi, edge]
+ *               voice:
+ *                 type: string
+ *               rate:
+ *                 type: number
+ *               volume:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: MP3 audio chunk
+ *         content:
+ *           audio/mpeg:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
+router.post('/synthesize-chunk', ttsController.synthesizeChunk);
+
+router.post(
+  '/books/:bookId/chapters/:chapterNumber/audio',
+  ttsController.synthesizeChapterAudio,
+);
 
 /**
  * @swagger
@@ -90,5 +132,12 @@ router.get('/voices', ttsController.getVoices);
  *         description: Synthesis failed
  */
 router.post('/books/:bookId/download', ttsController.downloadAudio);
+
+router.post('/listen-jobs', listenJobController.startListenJob);
+router.get('/listen-jobs/:jobId', listenJobController.getListenJob);
+router.get('/listen-jobs/:jobId/chapters/:chapterNumber', listenJobController.streamListenJobChapter);
+router.get('/listen-jobs/:jobId/download', listenJobController.downloadListenJobCombined);
+router.get('/listen-jobs/:jobId/playlist.m3u8', listenJobController.getListenJobPlaylist);
+router.delete('/listen-jobs/:jobId', listenJobController.removeListenJob);
 
 export default router;

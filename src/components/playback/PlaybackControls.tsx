@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Stack } from '@mui/material';
+import { Box, Stack, Typography, Chip } from '@mui/material';
 import type { PlaybackStatus } from '../../hooks/useTTS';
 import type { VoiceInfo } from '../../hooks/useVoices';
 import TransportButtons from './TransportButtons';
@@ -26,6 +26,8 @@ interface PlaybackControlsProps {
   onVolumeChange: (volume: number) => void;
   isMuted: boolean;
   onMuteToggle: () => void;
+  showVoicePicker?: boolean;
+  statusHint?: string;
 }
 
 /** Vertical divider — hidden on mobile */
@@ -73,14 +75,28 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
 
       <Divider />
 
-      <VoiceSelector
-        voices={props.voices}
-        selectedVoiceName={props.selectedVoiceName}
-        onVoiceChange={props.onVoiceChange}
-        compact
-      />
+      {props.showVoicePicker !== false ? (
+        <>
+          <VoiceSelector
+            voices={props.voices}
+            selectedVoiceName={props.selectedVoiceName}
+            onVoiceChange={props.onVoiceChange}
+            compact
+          />
+          <Divider />
+        </>
+      ) : (
+        <>
+          <Chip label="Server Zira" size="small" variant="outlined" sx={{ mx: 0.5 }} />
+          <Divider />
+        </>
+      )}
 
-      <Divider />
+      {props.statusHint && (
+        <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5, display: { xs: 'none', md: 'block' } }}>
+          {props.statusHint}
+        </Typography>
+      )}
 
       <StepperControl
         value={props.speed}

@@ -33,7 +33,7 @@ const TransportButtons: React.FC<TransportButtonsProps> = ({
   onSkipForward,
   onSkipBackward,
 }) => {
-  const isPlaying = status === 'playing';
+  const isPlaying = status === 'playing' || status === 'buffering';
   const isPaused = status === 'paused';
   const isIdle = status === 'idle';
 
