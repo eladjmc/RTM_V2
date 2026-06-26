@@ -5,8 +5,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _resolve_db_name() -> str:
+    """Use DB name from MONGO_URI path when present (matches Mongoose behavior)."""
+    uri = os.getenv("MONGO_URI", "")
+    if uri:
+        from urllib.parse import urlparse
+
+        path = urlparse(uri).path.lstrip("/")
+        if path:
+            return path.split("?")[0]
+    return os.getenv("DB_NAME", "rtm_v2")
+
+
 MONGO_URI: str = os.getenv("MONGO_URI", "")
-DB_NAME: str = os.getenv("DB_NAME", "rtm_v2")
+DB_NAME: str = _resolve_db_name()
 
 # Delay (seconds) between chapter fetches to avoid rate-limiting
 FETCH_DELAY: float = 1.5
@@ -46,7 +59,8 @@ DEFAULT_CLEANING_RULES: list[dict] = [
     # ── Ad / spam markers ─────────────────────────────────────────────────
     {"pattern": r"\[Pubfuture Ads\]", "action": "remove_line"},
     {"pattern": r"⚠️SYSTEM ALERT⚠️", "action": "remove_line"},
-    {"pattern": r"(?i)novelbin\.com|webnovel\.com|novlove\.com|readwn\.com", "action": "remove_line"},
+    {"pattern": r"(?i)novelbin\.com|novelfull\.net|freewebnovel\.com|novellunar\.com|webnovel\.com|novlove\.com|readwn\.com", "action": "remove_line"},
+    {"pattern": r"(?i)continue reading .+ at novellunar", "action": "remove_line"},
     {"pattern": r"(?i)read latest chapters at", "action": "remove_line"},
     {"pattern": r"(?i)visit .+\.com for the best reading experience", "action": "remove_line"},
 

@@ -1,4 +1,7 @@
 import { useLocalStorage } from './useLocalStorage';
+import type { TtsChunkProvider } from '../services/ttsService';
+
+export type PlaybackEngine = 'browser' | 'server';
 
 export interface ReaderSettings {
   text: string;
@@ -17,6 +20,12 @@ export interface ReaderSettings {
   setSavedParagraphIndex: (index: number) => void;
   fontSize: number;
   setFontSize: (size: number) => void;
+  playbackEngine: PlaybackEngine;
+  setPlaybackEngine: (engine: PlaybackEngine) => void;
+  serverProvider: TtsChunkProvider;
+  setServerProvider: (provider: TtsChunkProvider) => void;
+  serverVoice: string;
+  setServerVoice: (voice: string) => void;
 }
 
 /**
@@ -40,6 +49,18 @@ export function useReaderSettings(): ReaderSettings {
     0
   );
   const [fontSize, setFontSize] = useLocalStorage<number>('rtm-font-size', 18);
+  const [playbackEngine, setPlaybackEngine] = useLocalStorage<PlaybackEngine>(
+    'rtm-playback-engine',
+    'browser',
+  );
+  const [serverProvider, setServerProvider] = useLocalStorage<TtsChunkProvider>(
+    'rtm-server-provider',
+    'sapi',
+  );
+  const [serverVoice, setServerVoice] = useLocalStorage<string>(
+    'rtm-server-voice',
+    'Microsoft Zira Desktop',
+  );
 
   return {
     text,
@@ -58,5 +79,11 @@ export function useReaderSettings(): ReaderSettings {
     setSavedParagraphIndex,
     fontSize,
     setFontSize,
+    playbackEngine,
+    setPlaybackEngine,
+    serverProvider,
+    setServerProvider,
+    serverVoice,
+    setServerVoice,
   };
 }

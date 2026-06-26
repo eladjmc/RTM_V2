@@ -1,0 +1,30 @@
+# Render Blueprint — backend API (Docker, free tier)
+# https://render.com/docs/blueprint-spec
+#
+# After connecting this repo on Render:
+# 1. Set sync: false env vars in the dashboard (MONGO_URI, JWT_SECRET, etc.)
+# 2. Set FRONTEND_URL to your production frontend URL (e.g. https://your-app.netlify.app)
+# 3. Point the frontend VITE_API_URL at this service's URL
+
+services:
+  - type: web
+    name: rtm-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

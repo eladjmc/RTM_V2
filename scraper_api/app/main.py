@@ -7,7 +7,7 @@ from app.routers import scrape, rules
 
 app = FastAPI(
     title="RTM Scraper API",
-    description="Scrape novelbin.com chapters into the shared RTM MongoDB.",
+    description="Scrape novelbin.com, novelfull.net, freewebnovel.com, and novellunar.com chapters into the shared RTM MongoDB.",
     version="0.1.0",
 )
 

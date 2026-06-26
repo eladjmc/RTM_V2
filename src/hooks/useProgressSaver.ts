@@ -36,7 +36,10 @@ export function useProgressSaver(
     const prev = prevStatus.current;
     prevStatus.current = status;
 
-    if (prev === 'playing' && (status === 'paused' || status === 'idle')) {
+    if (
+      (prev === 'playing' || prev === 'buffering') &&
+      (status === 'paused' || status === 'idle')
+    ) {
       saveNow();
     }
   }, [status, saveNow]);

@@ -91,9 +91,27 @@ def clean_content(raw: str, book_id: str | None = None) -> str:
         output.append(line)
         prev_blank = is_blank
 
+    output = _ensure_line_periods(output)
+
     # Trim leading/trailing blank lines
     text = "\n".join(output).strip()
     return text
+
+
+def _ensure_line_periods(lines: list[str]) -> list[str]:
+    """Append '.' to non-blank lines missing terminal punctuation in the last 3 chars."""
+    result: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            result.append(line)
+            continue
+        tail = stripped[-3:]
+        if not any(ch in tail for ch in ".!?"):
+            result.append(stripped + ".")
+        else:
+            result.append(stripped)
+    return result
 
 
 def clean_chapter_title(raw_title: str) -> str:

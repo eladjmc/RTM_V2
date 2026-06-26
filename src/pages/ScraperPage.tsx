@@ -150,6 +150,36 @@ function JobRow({ job }: { job: ScrapeJob }) {
   );
 }
 
+/* ── Supported scrape sources ──────────────────────────────────────── */
+
+const SUPPORTED_SCRAPE_SITES = [
+  { label: 'Novelbin', url: 'https://novelbin.com' },
+  { label: 'NovelFull', url: 'https://novelfull.net' },
+  { label: 'FreeWebNovel', url: 'https://freewebnovel.com' },
+  { label: 'Novellunar', url: 'https://novellunar.com' },
+] as const;
+
+function SupportedSiteChips() {
+  return (
+    <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mt: 0.75 }}>
+      {SUPPORTED_SCRAPE_SITES.map((site) => (
+        <Chip
+          key={site.url}
+          label={site.label}
+          size="small"
+          variant="outlined"
+          clickable
+          component="a"
+          href={site.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{ textDecoration: 'none' }}
+        />
+      ))}
+    </Stack>
+  );
+}
+
 /* ── New scrape modal ──────────────────────────────────────────────── */
 
 function NewScrapeDialog({
@@ -198,19 +228,23 @@ function NewScrapeDialog({
         <DialogTitle sx={{ fontWeight: 700 }}>Scrape New Book</DialogTitle>
         <DialogContent>
           <Stack spacing={2.5} sx={{ mt: 1 }}>
-            <TextField
-              label="First Chapter URL"
-              placeholder="https://novelbin.com/b/book-name/chapter-1"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              required
-              autoFocus
-              size="small"
-              helperText="The URL of the first chapter to start scraping from."
-            />
+            <Box>
+              <TextField
+                label="First Chapter URL"
+                placeholder="Paste the first chapter URL from a supported site"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                required
+                autoFocus
+                size="small"
+                fullWidth
+                helperText="Paste a chapter page URL, then start the scrape."
+              />
+              <SupportedSiteChips />
+            </Box>
             <TextField
               label="Book Page URL (optional)"
-              placeholder="https://novelbin.com/b/book-name"
+              placeholder="Auto-derived from chapter URL if left empty"
               value={bookUrl}
               onChange={(e) => setBookUrl(e.target.value)}
               size="small"
@@ -409,7 +443,7 @@ export default function ScraperPage() {
             No scrape jobs yet
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Click "Add New Book" to scrape your first book from novelbin.
+            Click "Add New Book" to scrape your first book from a supported novel site.
           </Typography>
           <Button
             variant="contained"

@@ -19,13 +19,15 @@ import {
   ToggleButtonGroup,
   ToggleButton,
 } from '@mui/material';
-import { Close, Download } from '@mui/icons-material';
+import { Close, Download, Headphones } from '@mui/icons-material';
 import type { ChapterSummary } from '../../types/models';
 import {
   ttsService,
   type TtsVoice,
   type TtsErrorResponse,
 } from '../../services/ttsService';
+import { listenJobService } from '../../services/listenJobService';
+import type { ListenOfflineJobConfig } from '../../hooks/useListenOfflineJob';
 
 interface DownloadAudioModalProps {
   open: boolean;
@@ -34,6 +36,7 @@ interface DownloadAudioModalProps {
   bookTitle: string;
   chapters: ChapterSummary[];
   currentChapterNumber: number;
+  onListenOffline: (config: ListenOfflineJobConfig) => void;
 }
 
 export default function DownloadAudioModal({
@@ -43,9 +46,9 @@ export default function DownloadAudioModal({
   bookTitle,
   chapters,
   currentChapterNumber,
+  onListenOffline,
 }: DownloadAudioModalProps) {
-  // ── State ────────────────────────────────────────────────────
-  const [provider, setProvider] = useState<'edge' | 'sapi'>('edge');
+  const [provider, setProvider] = useState<'edge' | 'sapi'>('sapi');
   const [startChapter, setStartChapter] = useState(currentChapterNumber);
   const [endChapter, setEndChapter] = useState(currentChapterNumber);
   const [voice, setVoice] = useState('en-US-AriaNeural');
@@ -53,25 +56,26 @@ export default function DownloadAudioModal({
   const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
 
-  const [downloading, setDownloading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<'download' | 'listen' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chapterErrors, setChapterErrors] = useState<TtsErrorResponse['chapters']>(undefined);
   const [success, setSuccess] = useState(false);
 
-  // ── Reset state when modal opens ─────────────────────────────
   useEffect(() => {
     if (open) {
       setStartChapter(currentChapterNumber);
       setEndChapter(currentChapterNumber);
+      setProvider('sapi');
       setRate(1.25);
       setError(null);
       setChapterErrors(undefined);
       setSuccess(false);
-      setDownloading(false);
+      setBusy(false);
+      setBusyAction(null);
     }
   }, [open, currentChapterNumber]);
 
-  // ── Fetch voices once ────────────────────────────────────────
   useEffect(() => {
     if (!open || voices.length > 0) return;
     setLoadingVoices(true);
@@ -82,19 +86,16 @@ export default function DownloadAudioModal({
       .finally(() => setLoadingVoices(false));
   }, [open, voices.length]);
 
-  // ── Sorted chapters for dropdowns ────────────────────────────
   const sorted = useMemo(
     () => [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber),
     [chapters],
   );
 
-  // Valid end chapters (>= startChapter)
   const endOptions = useMemo(
     () => sorted.filter((ch) => ch.chapterNumber >= startChapter),
     [sorted, startChapter],
   );
 
-  // Fix endChapter if startChapter moves past it
   useEffect(() => {
     if (endChapter < startChapter) {
       setEndChapter(startChapter);
@@ -102,19 +103,40 @@ export default function DownloadAudioModal({
   }, [startChapter, endChapter]);
 
   const chapterCount = endChapter - startChapter + 1;
+  const resolvedVoice = provider === 'sapi' ? 'Microsoft Zira Desktop' : voice;
 
-  // ── Download handler ─────────────────────────────────────────
+  const buildChapterTitles = () => {
+    const map = new Map<number, string>();
+    for (const ch of sorted) {
+      if (ch.chapterNumber >= startChapter && ch.chapterNumber <= endChapter) {
+        map.set(ch.chapterNumber, ch.title);
+      }
+    }
+    return map;
+  };
+
+  const buildChapterIds = () => {
+    const map = new Map<number, string>();
+    for (const ch of sorted) {
+      if (ch.chapterNumber >= startChapter && ch.chapterNumber <= endChapter) {
+        map.set(ch.chapterNumber, ch._id);
+      }
+    }
+    return map;
+  };
+
   const handleDownload = async () => {
     setError(null);
     setChapterErrors(undefined);
     setSuccess(false);
-    setDownloading(true);
+    setBusy(true);
+    setBusyAction('download');
 
     try {
       await ttsService.downloadAudio(bookId, {
         startChapterNumber: startChapter,
         chapterCount,
-        voice: provider === 'sapi' ? 'Microsoft Zira Desktop' : voice,
+        voice: resolvedVoice,
         rate,
         provider,
       });
@@ -126,27 +148,68 @@ export default function DownloadAudioModal({
         setChapterErrors(e.data.chapters);
       }
     } finally {
-      setDownloading(false);
+      setBusy(false);
+      setBusyAction(null);
+    }
+  };
+
+  const handleListenOffline = async () => {
+    setError(null);
+    setChapterErrors(undefined);
+    setSuccess(false);
+    setBusy(true);
+    setBusyAction('listen');
+
+    try {
+      const job = await listenJobService.createJob({
+        bookId,
+        startChapterNumber: startChapter,
+        chapterCount,
+        voice: resolvedVoice,
+        rate,
+        provider,
+      });
+
+      onListenOffline({
+        jobId: job.jobId,
+        bookId,
+        bookTitle,
+        startChapter,
+        endChapter,
+        chapterTitles: buildChapterTitles(),
+        chapterIds: buildChapterIds(),
+        provider,
+        voice: resolvedVoice,
+        rate,
+      });
+      onClose();
+    } catch (err: unknown) {
+      const e = err as Error & { data?: TtsErrorResponse };
+      setError(e.message || 'Failed to start listen job');
+      if (e.data?.chapters) {
+        setChapterErrors(e.data.chapters);
+      }
+    } finally {
+      setBusy(false);
+      setBusyAction(null);
     }
   };
 
   return (
-    <Dialog open={open} onClose={downloading ? undefined : onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        Download Audio
-        <IconButton edge="end" onClick={onClose} disabled={downloading} size="small">
+        Audio
+        <IconButton edge="end" onClick={onClose} disabled={busy} size="small">
           <Close />
         </IconButton>
       </DialogTitle>
 
       <DialogContent dividers>
         <Stack spacing={2.5} sx={{ pt: 0.5 }}>
-          {/* Book name */}
           <Typography variant="subtitle2" color="text.secondary">
             Book: <strong>{bookTitle}</strong>
           </Typography>
 
-          {/* Chapter range */}
           <Stack direction="row" spacing={2}>
             <FormControl size="small" fullWidth>
               <InputLabel>From chapter</InputLabel>
@@ -154,7 +217,7 @@ export default function DownloadAudioModal({
                 label="From chapter"
                 value={startChapter}
                 onChange={(e) => setStartChapter(Number(e.target.value))}
-                disabled={downloading}
+                disabled={busy}
                 MenuProps={{ PaperProps: { sx: { maxHeight: 250 } } }}
               >
                 {sorted.map((ch) => (
@@ -171,7 +234,7 @@ export default function DownloadAudioModal({
                 label="To chapter"
                 value={endChapter}
                 onChange={(e) => setEndChapter(Number(e.target.value))}
-                disabled={downloading}
+                disabled={busy}
                 MenuProps={{ PaperProps: { sx: { maxHeight: 250 } } }}
               >
                 {endOptions.map((ch) => (
@@ -187,7 +250,6 @@ export default function DownloadAudioModal({
             {chapterCount} chapter{chapterCount !== 1 ? 's' : ''} selected
           </Typography>
 
-          {/* Provider toggle */}
           <Box>
             <Typography variant="body2" gutterBottom>
               Voice Engine
@@ -198,45 +260,38 @@ export default function DownloadAudioModal({
               onChange={(_, val) => { if (val) setProvider(val); }}
               size="small"
               fullWidth
-              disabled={downloading}
+              disabled={busy}
             >
-              <ToggleButton value="edge">
-                Edge (Neural)
-              </ToggleButton>
-              <ToggleButton value="sapi">
-                Zira (SAPI)
-              </ToggleButton>
+              <ToggleButton value="sapi">Zira (SAPI)</ToggleButton>
+              <ToggleButton value="edge">Edge (Neural)</ToggleButton>
             </ToggleButtonGroup>
           </Box>
 
-          {/* Voice picker — only for Edge provider */}
           {provider === 'edge' && (
             <FormControl size="small" fullWidth>
-            <InputLabel>Voice</InputLabel>
-            <Select
-              label="Voice"
-              value={voices.length > 0 ? voice : ''}
-              onChange={(e) => setVoice(e.target.value)}
-              disabled={downloading || loadingVoices}
-              MenuProps={{ PaperProps: { sx: { maxHeight: 250 } } }}
-            >
-              {voices.map((v) => (
-                <MenuItem key={v.ShortName} value={v.ShortName}>
-                  {v.FriendlyName.replace('Microsoft ', '').replace(' Online (Natural) - English (United States)', '')} ({v.Gender})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              <InputLabel>Voice</InputLabel>
+              <Select
+                label="Voice"
+                value={voices.length > 0 ? voice : ''}
+                onChange={(e) => setVoice(e.target.value)}
+                disabled={busy || loadingVoices}
+                MenuProps={{ PaperProps: { sx: { maxHeight: 250 } } }}
+              >
+                {voices.map((v) => (
+                  <MenuItem key={v.ShortName} value={v.ShortName}>
+                    {v.FriendlyName.replace('Microsoft ', '').replace(' Online (Natural) - English (United States)', '')} ({v.Gender})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
 
-          {/* SAPI info when Zira is selected */}
           {provider === 'sapi' && (
             <Alert severity="info" sx={{ py: 0.5 }}>
               Uses Microsoft Zira — a classic, clear desktop voice via Windows SAPI.
             </Alert>
           )}
 
-          {/* Speed slider */}
           <Box>
             <Typography variant="body2" gutterBottom>
               Speed: {rate.toFixed(2)}x
@@ -247,7 +302,7 @@ export default function DownloadAudioModal({
               min={0.5}
               max={2.0}
               step={0.05}
-              disabled={downloading}
+              disabled={busy}
               marks={[
                 { value: 0.5, label: '0.5x' },
                 { value: 1.0, label: '1x' },
@@ -258,7 +313,11 @@ export default function DownloadAudioModal({
             />
           </Box>
 
-          {/* Error display */}
+          <Alert severity="info" sx={{ py: 0.5 }}>
+            <strong>Listen offline</strong> synthesizes on the server and starts playback as chapters finish.
+            <strong> Download MP3</strong> waits for the full range, then saves one file.
+          </Alert>
+
           {error && (
             <Alert severity="error" sx={{ whiteSpace: 'pre-line' }}>
               {error}
@@ -274,36 +333,64 @@ export default function DownloadAudioModal({
             </Alert>
           )}
 
-          {/* Success display */}
           {success && (
             <Alert severity="success">
               Audio generated successfully! Your download should start automatically.
             </Alert>
           )}
 
-          {/* Loading indicator */}
-          {downloading && (
+          {busy && busyAction === 'download' && (
             <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="center">
               <CircularProgress size={20} />
               <Typography variant="body2" color="text.secondary">
-                Generating audio for {chapterCount} chapter{chapterCount !== 1 ? 's' : ''}… This may take a few minutes.
+                Generating audio for {chapterCount} chapter{chapterCount !== 1 ? 's' : ''}…
+              </Typography>
+            </Stack>
+          )}
+
+          {busy && busyAction === 'listen' && (
+            <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="center">
+              <CircularProgress size={20} />
+              <Typography variant="body2" color="text.secondary">
+                Starting listen job…
               </Typography>
             </Stack>
           )}
         </Stack>
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={onClose} disabled={downloading}>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1, px: 2, py: 1.5 }}>
+        <Button onClick={onClose} disabled={busy}>
           Close
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button
+          variant="outlined"
+          startIcon={
+            busy && busyAction === 'listen' ? (
+              <CircularProgress size={16} color="inherit" />
+            ) : (
+              <Headphones />
+            )
+          }
+          onClick={handleListenOffline}
+          disabled={busy || chapters.length === 0}
+        >
+          {busy && busyAction === 'listen' ? 'Starting…' : 'Listen offline'}
         </Button>
         <Button
           variant="contained"
-          startIcon={downloading ? <CircularProgress size={16} color="inherit" /> : <Download />}
+          startIcon={
+            busy && busyAction === 'download' ? (
+              <CircularProgress size={16} color="inherit" />
+            ) : (
+              <Download />
+            )
+          }
           onClick={handleDownload}
-          disabled={downloading || chapters.length === 0}
+          disabled={busy || chapters.length === 0}
         >
-          {downloading ? 'Generating…' : 'Download'}
+          {busy && busyAction === 'download' ? 'Generating…' : 'Download MP3'}
         </Button>
       </DialogActions>
     </Dialog>

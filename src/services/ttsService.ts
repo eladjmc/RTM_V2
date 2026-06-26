@@ -28,7 +28,88 @@ export interface TtsErrorResponse {
   chapters?: TtsChapterError[];
 }
 
+export type TtsChunkProvider = 'sapi' | 'edge';
+
+export interface SynthesizeChunkParams {
+  text: string;
+  provider?: TtsChunkProvider;
+  voice?: string;
+  rate?: number;
+  volume?: number;
+}
+
+export interface TtsChunkCacheKeyParts {
+  bookId: string;
+  chapterId: string;
+  paragraphIndex: number;
+  provider: TtsChunkProvider;
+  voice: string;
+  rate: number;
+}
+
+/** Stable cache key for IndexedDB chunk storage */
+export function buildTtsChunkCacheKey(parts: TtsChunkCacheKeyParts): string {
+  const { bookId, chapterId, paragraphIndex, provider, voice, rate } = parts;
+  return `${bookId}|${chapterId}|${paragraphIndex}|${provider}|${voice}|${rate.toFixed(2)}`;
+}
+
 export const ttsService = {
+  /** Synthesise a single paragraph chunk for server playback mode. */
+  synthesizeChunk: async (params: SynthesizeChunkParams): Promise<Blob> => {
+    const res = await fetch(`${API_URL}/api/tts/synthesize-chunk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        text: params.text,
+        provider: params.provider ?? 'sapi',
+        voice: params.voice,
+        rate: params.rate ?? 1.0,
+        volume: params.volume ?? 100,
+      }),
+    });
+
+    if (!res.ok) {
+      const body: TtsErrorResponse = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(body.error);
+    }
+
+    return res.blob();
+  },
+
+  /**
+   * Synthesise a full chapter MP3 for listen-while-download mode.
+   */
+  synthesizeChapterAudio: async (
+    bookId: string,
+    chapterNumber: number,
+    params: Pick<SynthesizeChunkParams, 'provider' | 'voice' | 'rate' | 'volume'>,
+  ): Promise<Blob> => {
+    const res = await fetch(
+      `${API_URL}/api/tts/books/${bookId}/chapters/${chapterNumber}/audio`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          provider: params.provider ?? 'sapi',
+          voice: params.voice,
+          rate: params.rate ?? 1.0,
+          volume: params.volume ?? 100,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const body: TtsErrorResponse = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      const err = new Error(body.error) as Error & { data?: TtsErrorResponse };
+      err.data = body;
+      throw err;
+    }
+
+    return res.blob();
+  },
+
   /** Fetch available en-US Edge voices */
   getVoices: async (): Promise<TtsVoice[]> => {
     const res = await fetch(`${API_URL}/api/tts/voices`, {

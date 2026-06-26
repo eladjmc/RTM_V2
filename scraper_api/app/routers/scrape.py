@@ -34,15 +34,17 @@ def list_jobs(status: str | None = None):
         "Kicks off a background scrape job.\n\n"
         "**Scrape the entire book (with cover):**\n"
         "```json\n"
-        '{"url": "https://novelbin.com/b/the-beginning-after-the-end/chapter-1", '
-        '"book_url": "https://novelbin.com/b/the-beginning-after-the-end"}\n'
+        '{"url": "https://novellunar.com/novel/i-am-not-a-goblin-slayer/chapter/1", '
+        '"book_url": "https://novellunar.com/novel/i-am-not-a-goblin-slayer"}\n'
         "```\n\n"
         "**Scrape first N chapters only** — add `max_chapters`:\n"
         "```json\n"
         '{"url": "https://novelbin.com/b/the-beginning-after-the-end/chapter-1", '
         '"book_url": "https://novelbin.com/b/the-beginning-after-the-end", "max_chapters": 5}\n'
         "```\n\n"
-        "`book_url` is optional but recommended — it fetches the cover image and author.\n\n"
+        "Supported sites: **novelbin.com**, **novelfull.net**, **freewebnovel.com**, **novellunar.com** (auto-detected from URL).\n\n"
+        "`book_url` is optional — it fetches the cover image and author, and is "
+        "auto-derived from the chapter URL when omitted.\n\n"
         "Returns a progress object with a `job_id` you can poll via `GET /scrape/{job_id}`."
     ),
 )

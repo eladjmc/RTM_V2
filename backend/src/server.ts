@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { execFileSync } from 'child_process';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -9,6 +10,7 @@ import authRoutes from './routes/auth.routes.js';
 import bookRoutes from './routes/book.routes.js';
 import chapterRoutes from './routes/chapter.routes.js';
 import ttsRoutes from './routes/tts.routes.js';
+import { getFfmpegPath } from './utils/ffmpeg.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,8 +40,16 @@ app.use('/api', chapterRoutes);
 
 // Start server
 const start = async () => {
+  try {
+    const ffmpegLine = execFileSync(getFfmpegPath(), ['-version'], { encoding: 'utf8' })
+      .split('\n')[0];
+    console.log(ffmpegLine);
+  } catch {
+    console.warn('ffmpeg not available — combined MP3 downloads will fail');
+  }
+
   await connectDB();
-  app.listen(PORT, () => {
+  app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
 };
