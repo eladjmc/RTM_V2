@@ -8,15 +8,22 @@ class ScrapeRequest(BaseModel):
     url: str = Field(
         ...,
         description=(
-            "First chapter URL of the book on novelbin.com. "
-            "Example: https://novelbin.com/b/the-beginning-after-the-end/chapter-1"
+            "First chapter URL. Supported sites: novelbin.com, novelfull.net, freewebnovel.com, novellunar.com. "
+            "Examples: https://novelbin.com/b/the-beginning-after-the-end/chapter-1, "
+            "https://novelfull.net/martial-peak/chapter-1.html, "
+            "https://freewebnovel.com/novel/ending-maker/chapter-1, "
+            "https://novellunar.com/novel/slug/chapter/1"
         ),
     )
     book_url: str | None = Field(
         None,
         description=(
             "Optional book main-page URL to fetch cover image and author. "
-            "Example: https://novelbin.com/b/the-beginning-after-the-end"
+            "Auto-derived from the chapter URL when omitted. "
+            "Examples: https://novelbin.com/b/the-beginning-after-the-end, "
+            "https://novelfull.net/martial-peak.html, "
+            "https://freewebnovel.com/novel/ending-maker, "
+            "https://novellunar.com/novel/slug"
         ),
     )
     max_chapters: int | None = Field(
@@ -42,8 +49,8 @@ class ScrapeRequest(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "url": "https://novelbin.com/b/the-beginning-after-the-end/chapter-1",
-                "book_url": "https://novelbin.com/b/the-beginning-after-the-end",
+                "url": "https://novellunar.com/novel/i-am-not-a-goblin-slayer/chapter/1",
+                "book_url": "https://novellunar.com/novel/i-am-not-a-goblin-slayer",
                 "max_chapters": 5,
                 "starting_chapter": 1,
             }

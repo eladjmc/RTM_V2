@@ -28,3 +28,4 @@ scraper_api/.env
 *.njsproj
 *.sln
 *.sw?
+.history/
