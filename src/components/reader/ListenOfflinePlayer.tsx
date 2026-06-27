@@ -37,9 +37,28 @@ import {
   saveListenPosition,
 } from '../../services/listenPlaybackPosition';
 import { listenJobService } from '../../services/listenJobService';
+import { playAudioWhenReady, prepareAudioElement } from '../../utils/audioPlayback';
 
 const SEEK_STEP_SEC = 20;
 const POSITION_SAVE_INTERVAL_MS = 5000;
+
+function buildListenPositionSave(
+  config: ListenOfflineJobConfig,
+  chapterNumber: number,
+  currentTime: number,
+) {
+  return {
+    bookId: config.bookId,
+    jobId: config.jobId,
+    startChapter: config.startChapter,
+    endChapter: config.endChapter,
+    chapterNumber,
+    currentTime,
+    provider: config.provider,
+    voice: config.voice,
+    rate: config.rate,
+  };
+}
 
 interface ListenOfflinePlayerProps {
   open: boolean;
@@ -97,14 +116,9 @@ export default function ListenOfflinePlayer({
     if (!config || !currentChapter) return;
     const audio = audioRef.current;
     const time = audio?.currentTime ?? currentTime;
-    saveListenPosition({
-      bookId: config.bookId,
-      chapterNumber: currentChapter.chapterNumber,
-      currentTime: time,
-      provider: config.provider,
-      voice: config.voice,
-      rate: config.rate,
-    });
+    saveListenPosition(
+      buildListenPositionSave(config, currentChapter.chapterNumber, time),
+    );
   }, [config, currentChapter, currentTime]);
 
   const saveBookProgress = useCallback(async (): Promise<boolean> => {
@@ -154,12 +168,6 @@ export default function ListenOfflinePlayer({
   }, [releaseObjectUrl]);
 
   const applyPendingSeek = useCallback((audio: HTMLAudioElement, session: number) => {
-    const seekTo = pendingSeekRef.current;
-    if (seekTo != null && seekTo > 0) {
-      const max = audio.duration || seekTo;
-      audio.currentTime = Math.min(seekTo, max);
-      pendingSeekRef.current = null;
-    }
     if (session === playSessionRef.current) {
       setDuration(audio.duration || 0);
       setCurrentTime(audio.currentTime);
@@ -191,10 +199,14 @@ export default function ListenOfflinePlayer({
       stopAudio();
       playSessionRef.current = session;
 
+      const startTime = pendingSeekRef.current ?? 0;
+      pendingSeekRef.current = null;
+
       const url = URL.createObjectURL(blob);
       objectUrlRef.current = url;
 
       const audio = audioRef.current ?? new Audio();
+      prepareAudioElement(audio);
       audioRef.current = audio;
       audio.src = url;
       audio.volume = 1;
@@ -211,14 +223,9 @@ export default function ListenOfflinePlayer({
         if (now - lastPositionSaveRef.current >= POSITION_SAVE_INTERVAL_MS) {
           lastPositionSaveRef.current = now;
           if (config && chapter) {
-            saveListenPosition({
-              bookId: config.bookId,
-              chapterNumber: chapter.chapterNumber,
-              currentTime: audio.currentTime,
-              provider: config.provider,
-              voice: config.voice,
-              rate: config.rate,
-            });
+            saveListenPosition(
+              buildListenPositionSave(config, chapter.chapterNumber, audio.currentTime),
+            );
           }
         }
       };
@@ -228,14 +235,9 @@ export default function ListenOfflinePlayer({
         setCurrentTime(0);
         setScrubValue(0);
         if (config) {
-          saveListenPosition({
-            bookId: config.bookId,
-            chapterNumber: chapter.chapterNumber,
-            currentTime: 0,
-            provider: config.provider,
-            voice: config.voice,
-            rate: config.rate,
-          });
+          saveListenPosition(
+            buildListenPositionSave(config, chapter.chapterNumber, 0),
+          );
         }
         if (index + 1 < state.chapters.length) {
           pendingSeekRef.current = null;
@@ -251,9 +253,12 @@ export default function ListenOfflinePlayer({
 
       setIsWaiting(false);
       try {
-        await audio.play();
+        await playAudioWhenReady(audio, startTime);
         if (session === playSessionRef.current) {
           setIsPlaying(true);
+          setDuration(audio.duration || 0);
+          setCurrentTime(audio.currentTime);
+          setScrubValue(audio.currentTime);
           lastPositionSaveRef.current = Date.now();
         }
       } catch {
@@ -279,6 +284,9 @@ export default function ListenOfflinePlayer({
       );
       if (
         saved &&
+        saved.jobId === config.jobId &&
+        saved.startChapter === config.startChapter &&
+        saved.endChapter === config.endChapter &&
         saved.chapterNumber >= config.startChapter &&
         saved.chapterNumber <= config.endChapter &&
         saved.currentTime > 0
