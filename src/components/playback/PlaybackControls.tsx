@@ -48,7 +48,7 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
     sx={{
       flexShrink: 0,
       px: { xs: 0.5, sm: 2 },
-      py: { xs: 0.25, sm: 1 },
+      py: { xs: 0.5, sm: 1 },
       borderBottom: 1,
       borderColor: 'divider',
       bgcolor: 'background.paper',
@@ -57,21 +57,33 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
   >
     <Stack
       direction="row"
+      flexWrap="wrap"
       alignItems="center"
       justifyContent="center"
-      sx={{ gap: { xs: 0.25, sm: 1 } }}
+      sx={{ gap: { xs: 0.5, sm: 1 } }}
     >
-      <TransportButtons
-        status={props.status}
-        hasText={props.hasText}
-        onPlay={props.onPlay}
-        onPause={props.onPause}
-        onResume={props.onResume}
-        onStop={props.onStop}
-        onReset={props.onReset}
-        onSkipForward={props.onSkipForward}
-        onSkipBackward={props.onSkipBackward}
-      />
+      {/* Full-width on phone so transport wraps to its own row */}
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="center"
+        sx={{
+          width: { xs: '100%', sm: 'auto' },
+          gap: { xs: 0.25, sm: 1 },
+        }}
+      >
+        <TransportButtons
+          status={props.status}
+          hasText={props.hasText}
+          onPlay={props.onPlay}
+          onPause={props.onPause}
+          onResume={props.onResume}
+          onStop={props.onStop}
+          onReset={props.onReset}
+          onSkipForward={props.onSkipForward}
+          onSkipBackward={props.onSkipBackward}
+        />
+      </Stack>
 
       <Divider />
 
@@ -87,7 +99,12 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
         </>
       ) : (
         <>
-          <Chip label="Server Zira" size="small" variant="outlined" sx={{ mx: 0.5 }} />
+          <Chip
+            label="Server Zira"
+            size="small"
+            variant="outlined"
+            sx={{ mx: 0.5, display: { xs: 'none', sm: 'flex' } }}
+          />
           <Divider />
         </>
       )}
@@ -111,7 +128,6 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = (props) => (
         hideButtons
       />
 
-      {/* Always-visible divider before volume */}
       <Box sx={{ width: '1px', height: 28, bgcolor: 'divider', mx: 0.5 }} />
 
       <VolumeControl
