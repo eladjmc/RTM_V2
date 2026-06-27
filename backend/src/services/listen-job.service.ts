@@ -11,7 +11,7 @@ import {
 } from './chapter-audio.service.js';
 import { mergeMp3Files } from './audio-merge.service.js';
 
-const JOB_TTL_MS = 6 * 60 * 60 * 1000;
+const JOB_TTL_MS = 3 * 60 * 60 * 1000;
 const SYNTH_CONCURRENCY = 3;
 const JOBS_ROOT = path.join(os.tmpdir(), 'rtm-listen-jobs');
 
@@ -38,6 +38,25 @@ export interface ListenJobStatus {
   loadingChapter: number | null;
   combinedReady: boolean;
   chapters: ListenJobChapter[];
+  createdAt: string;
+  error?: string;
+}
+
+/** Lightweight job entry for server cache listing */
+export interface ListenJobSummary {
+  jobId: string;
+  bookId: string;
+  bookTitle: string;
+  startChapter: number;
+  endChapter: number;
+  provider: ChapterAudioProvider;
+  voice: string;
+  rate: number;
+  status: 'running' | 'complete' | 'failed';
+  readyCount: number;
+  totalCount: number;
+  combinedReady: boolean;
+  createdAt: string;
   error?: string;
 }
 
@@ -92,6 +111,27 @@ function toPublicStatus(job: ListenJob): ListenJobStatus {
     loadingChapter: job.loadingChapter,
     combinedReady: job.combinedReady,
     chapters,
+    createdAt: new Date(job.createdAt).toISOString(),
+    error: job.error,
+  };
+}
+
+function toPublicSummary(job: ListenJob): ListenJobSummary {
+  const chapters = job.chapterNumbers.map((n) => job.chapters.get(n)!);
+  return {
+    jobId: job.id,
+    bookId: job.bookId,
+    bookTitle: job.bookTitle,
+    startChapter: job.startChapter,
+    endChapter: job.endChapter,
+    provider: job.provider,
+    voice: job.voice,
+    rate: job.rate,
+    status: job.status,
+    readyCount: chapters.filter((c) => c.status === 'ready').length,
+    totalCount: chapters.length,
+    combinedReady: job.combinedReady,
+    createdAt: new Date(job.createdAt).toISOString(),
     error: job.error,
   };
 }
@@ -274,6 +314,12 @@ export function getListenJobStatus(jobId: string): ListenJobStatus | null {
   return job ? toPublicStatus(job) : null;
 }
 
+export function listListenJobs(): ListenJobSummary[] {
+  return Array.from(jobs.values())
+    .map(toPublicSummary)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export async function getChapterAudioPath(
   jobId: string,
   chapterNumber: number,
@@ -306,6 +352,15 @@ export async function deleteListenJob(jobId: string): Promise<void> {
   if (!job) return;
   jobs.delete(jobId);
   await fs.rm(job.dir, { recursive: true, force: true }).catch(() => {});
+}
+
+/** Remove all listen-job temp files (active and orphaned). */
+export async function clearListenJobCache(): Promise<{ deletedJobs: number }> {
+  const deletedJobs = jobs.size;
+  jobs.clear();
+  await fs.rm(JOBS_ROOT, { recursive: true, force: true }).catch(() => {});
+  await ensureJobsRoot();
+  return { deletedJobs };
 }
 
 /** Dynamic HLS EVENT playlist pointing at ready chapter MP3 segments */

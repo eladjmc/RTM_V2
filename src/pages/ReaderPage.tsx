@@ -22,6 +22,7 @@ import { useReadingContext } from '../hooks/useReadingContext';
 import { useProgressSaver } from '../hooks/useProgressSaver';
 import type { NextChapterPrefetch } from '../hooks/useServerTTS';
 import type { ListenOfflineJobConfig } from '../hooks/useListenOfflineJob';
+import type { ListenJobSummary } from '../services/listenJobService';
 
 const ReaderPage: React.FC = () => {
   const settings = useReaderSettings();
@@ -287,8 +288,38 @@ const ReaderPage: React.FC = () => {
 
   const handleCloseListenPlayer = useCallback(() => {
     setListenPlayerOpen(false);
-    setListenConfig(null);
   }, []);
+
+  const handleResumeListenJob = useCallback(
+    (job: ListenJobSummary) => {
+      const ctx = readingCtx;
+      if (!ctx || job.bookId !== ctx.bookId) return;
+
+      const chapterTitles = new Map<number, string>();
+      const chapterIds = new Map<number, string>();
+      for (const ch of ctx.chapters) {
+        if (ch.chapterNumber >= job.startChapter && ch.chapterNumber <= job.endChapter) {
+          chapterTitles.set(ch.chapterNumber, ch.title);
+          chapterIds.set(ch.chapterNumber, ch._id);
+        }
+      }
+
+      setListenConfig({
+        jobId: job.jobId,
+        bookId: job.bookId,
+        bookTitle: job.bookTitle,
+        startChapter: job.startChapter,
+        endChapter: job.endChapter,
+        chapterTitles,
+        chapterIds,
+        provider: job.provider,
+        voice: job.voice,
+        rate: job.rate,
+      });
+      setListenPlayerOpen(true);
+    },
+    [readingCtx],
+  );
 
   const statusHint =
     isServerMode && status === 'buffering' ? 'Buffering…' : undefined;
@@ -391,6 +422,7 @@ const ReaderPage: React.FC = () => {
           chapters={readingCtx.chapters}
           currentChapterNumber={readingCtx.chapterNumber}
           onListenOffline={handleListenOffline}
+          onResumeListenJob={handleResumeListenJob}
         />
       )}
 

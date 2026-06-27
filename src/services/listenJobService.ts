@@ -23,6 +23,24 @@ export interface ListenJobStatus {
   loadingChapter: number | null;
   combinedReady: boolean;
   chapters: ListenJobChapter[];
+  createdAt: string;
+  error?: string;
+}
+
+export interface ListenJobSummary {
+  jobId: string;
+  bookId: string;
+  bookTitle: string;
+  startChapter: number;
+  endChapter: number;
+  provider: 'sapi' | 'edge';
+  voice: string;
+  rate: number;
+  status: 'running' | 'complete' | 'failed';
+  readyCount: number;
+  totalCount: number;
+  combinedReady: boolean;
+  createdAt: string;
   error?: string;
 }
 
@@ -56,6 +74,14 @@ export const listenJobService = {
       body: JSON.stringify(params),
     });
     return handleJson(res);
+  },
+
+  listJobs: async (): Promise<ListenJobSummary[]> => {
+    const res = await fetch(`${API_URL}/api/tts/listen-jobs`, {
+      credentials: 'include',
+    });
+    const body = await handleJson<{ jobs: ListenJobSummary[] }>(res);
+    return body.jobs;
   },
 
   getStatus: async (jobId: string): Promise<ListenJobStatus> => {
@@ -106,5 +132,14 @@ export const listenJobService = {
       method: 'DELETE',
       credentials: 'include',
     });
+  },
+
+  clearServerCache: async (): Promise<{ deletedJobs: number }> => {
+    const res = await fetch(`${API_URL}/api/tts/listen-jobs/cache`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    const body = await handleJson<{ deletedJobs: number; message: string }>(res);
+    return { deletedJobs: body.deletedJobs };
   },
 };
