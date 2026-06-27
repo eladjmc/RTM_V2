@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import type { ParagraphInfo } from '../utils/textParser';
 import {
   ttsService,
@@ -6,7 +6,17 @@ import {
   type TtsChunkProvider,
 } from '../services/ttsService';
 import { ttsChunkCache } from '../services/ttsChunkCache';
-import { playAudioWhenReady, prepareAudioElement } from '../utils/audioPlayback';
+import {
+  buildTtsPlaybackChunks,
+  findChunkIndexForParagraph,
+  type TtsPlaybackChunk,
+} from '../utils/ttsPlaybackChunks';
+import {
+  playAudioWhenReady,
+  prepareAudioElement,
+  resetAudioElement,
+  audioChunkGap,
+} from '../utils/audioPlayback';
 import type { TTSState, TTSControls, PlaybackStatus } from './useTTS';
 
 export type { PlaybackStatus };
@@ -47,6 +57,11 @@ export function useServerTTS({
   nextChapterPrefetch,
   onEnd,
 }: UseServerTTSOptions): [TTSState, TTSControls] {
+  const playbackChunks = useMemo(
+    () => buildTtsPlaybackChunks(paragraphs),
+    [paragraphs],
+  );
+
   const [state, setState] = useState<TTSState>({
     status: 'idle',
     currentParagraphIndex: 0,
@@ -56,6 +71,7 @@ export function useServerTTS({
 
   const stateRef = useRef(state);
   const paragraphsRef = useRef(paragraphs);
+  const playbackChunksRef = useRef(playbackChunks);
   const providerRef = useRef(provider);
   const voiceRef = useRef(voice);
   const rateRef = useRef(rate);
@@ -70,6 +86,7 @@ export function useServerTTS({
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { paragraphsRef.current = paragraphs; }, [paragraphs]);
+  useEffect(() => { playbackChunksRef.current = playbackChunks; }, [playbackChunks]);
   useEffect(() => { providerRef.current = provider; }, [provider]);
   useEffect(() => { voiceRef.current = voice; }, [voice]);
   useEffect(() => { rateRef.current = rate; }, [rate]);
@@ -88,11 +105,11 @@ export function useServerTTS({
   }, []);
 
   const buildKey = useCallback(
-    (paragraphIndex: number, chapterId?: string) =>
+    (chunkIndex: number, chapterId?: string) =>
       buildTtsChunkCacheKey({
         bookId: cacheContextRef.current.bookId,
         chapterId: chapterId ?? cacheContextRef.current.chapterId,
-        paragraphIndex,
+        chunkIndex,
         provider: providerRef.current,
         voice: voiceRef.current,
         rate: rateRef.current,
@@ -100,35 +117,35 @@ export function useServerTTS({
     [],
   );
 
-  const resolveParagraphText = useCallback(
-    (paragraphIndex: number, chapterId?: string, overrideText?: string): string | null => {
-      if (overrideText) return overrideText;
-      const prefetch = nextChapterPrefetchRef.current;
-      if (
-        chapterId &&
-        prefetch &&
-        chapterId === prefetch.chapterId &&
-        paragraphIndex === 0
-      ) {
-        return prefetch.paragraphText;
+  const resolveChunk = useCallback(
+    (
+      chunkIndex: number,
+      chapterId?: string,
+      overrideText?: string,
+    ): TtsPlaybackChunk | { text: string; chunkIndex: number } | null => {
+      if (overrideText && chapterId) {
+        return { text: overrideText, chunkIndex: 0 };
       }
-      const paras = paragraphsRef.current;
-      if (paragraphIndex < 0 || paragraphIndex >= paras.length) return null;
-      return paras[paragraphIndex].text;
+
+      const chunks = playbackChunksRef.current;
+      if (chunkIndex < 0 || chunkIndex >= chunks.length) return null;
+      return chunks[chunkIndex];
     },
     [],
   );
 
   const fetchChunk = useCallback(
     async (
-      paragraphIndex: number,
+      chunkIndex: number,
       chapterId?: string,
       overrideText?: string,
     ): Promise<Blob> => {
-      const text = resolveParagraphText(paragraphIndex, chapterId, overrideText);
-      if (!text) throw new Error('No text for chunk');
+      const chunk = resolveChunk(chunkIndex, chapterId, overrideText);
+      if (!chunk) throw new Error('No text for chunk');
 
-      const key = buildKey(paragraphIndex, chapterId);
+      const text = chunk.text;
+      const resolvedChunkIndex = chunk.chunkIndex;
+      const key = buildKey(resolvedChunkIndex, chapterId);
       const existing = inflightRef.current.get(key);
       if (existing) return existing;
 
@@ -155,13 +172,13 @@ export function useServerTTS({
         inflightRef.current.delete(key);
       }
     },
-    [buildKey, resolveParagraphText],
+    [buildKey, resolveChunk],
   );
 
   const prefetchChunk = useCallback(
-    (paragraphIndex: number, chapterId?: string, overrideText?: string) => {
+    (chunkIndex: number, chapterId?: string, overrideText?: string) => {
       if (!enabled) return;
-      fetchChunk(paragraphIndex, chapterId, overrideText).catch(() => {});
+      fetchChunk(chunkIndex, chapterId, overrideText).catch(() => {});
     },
     [enabled, fetchChunk],
   );
@@ -174,77 +191,98 @@ export function useServerTTS({
           return;
         }
 
-        const url = URL.createObjectURL(blob);
-        const audio = audioRef.current ?? new Audio();
-        prepareAudioElement(audio);
-        audioRef.current = audio;
-        audio.volume = volumeRef.current;
-        audio.src = url;
+        const run = async () => {
+          const audio = audioRef.current ?? new Audio();
+          prepareAudioElement(audio);
+          audioRef.current = audio;
 
-        const cleanup = () => {
-          URL.revokeObjectURL(url);
-          audio.onended = null;
-          audio.onerror = null;
-        };
+          await resetAudioElement(audio);
 
-        audio.onended = () => {
-          cleanup();
-          resolve('ended');
-        };
-        audio.onerror = () => {
-          cleanup();
-          resolve('ended');
-        };
+          if (session !== sessionRef.current) {
+            resolve('interrupted');
+            return;
+          }
 
-        playAudioWhenReady(audio, 0)
-          .then(() => {
+          const url = URL.createObjectURL(blob);
+          let revoked = false;
+          const revoke = () => {
+            if (!revoked) {
+              URL.revokeObjectURL(url);
+              revoked = true;
+            }
+          };
+
+          audio.volume = volumeRef.current;
+          audio.src = url;
+
+          const cleanup = () => {
+            audio.onended = null;
+            audio.onerror = null;
+            revoke();
+          };
+
+          audio.onended = () => {
+            cleanup();
+            resolve('ended');
+          };
+          audio.onerror = () => {
+            cleanup();
+            resolve('ended');
+          };
+
+          try {
+            await playAudioWhenReady(audio, 0);
             if (session !== sessionRef.current) {
               audio.pause();
               cleanup();
               resolve('interrupted');
             }
-          })
-          .catch(() => {
+          } catch {
             cleanup();
             resolve('interrupted');
-          });
+          }
+        };
+
+        run();
       }),
     [],
   );
 
-  const speakFrom = useCallback(
-    async (startIndex: number, session: number) => {
-      const paras = paragraphsRef.current;
+  const speakFromChunk = useCallback(
+    async (startChunkIndex: number, session: number) => {
+      const chunks = playbackChunksRef.current;
 
-      for (let i = startIndex; i < paras.length; i++) {
+      for (let ci = startChunkIndex; ci < chunks.length; ci++) {
         if (session !== sessionRef.current) return;
 
         const status = stateRef.current.status;
         if (status !== 'playing' && status !== 'buffering') return;
 
+        const chunk = chunks[ci];
+
         setState((prev) => ({
           ...prev,
           status: 'buffering',
-          currentParagraphIndex: i,
+          currentParagraphIndex: chunk.startParagraphIndex,
           currentWordIndex: -1,
           currentCharIndex: 0,
         }));
 
         for (let ahead = 1; ahead <= PREFETCH_AHEAD; ahead++) {
-          const prefetchIdx = i + ahead;
-          if (prefetchIdx < paras.length) {
+          const prefetchIdx = ci + ahead;
+          if (prefetchIdx < chunks.length) {
             prefetchChunk(prefetchIdx);
           }
         }
 
         const prefetch = nextChapterPrefetchRef.current;
-        if (prefetch && i === paras.length - 1) {
+        if (prefetch && ci === chunks.length - 1) {
           prefetchChunk(0, prefetch.chapterId, prefetch.paragraphText);
         }
 
         let blob: Blob;
         try {
-          blob = await fetchChunk(i);
+          blob = await fetchChunk(ci);
         } catch {
           if (session !== sessionRef.current) return;
           setState((prev) => ({ ...prev, status: 'paused' }));
@@ -254,19 +292,28 @@ export function useServerTTS({
         if (session !== sessionRef.current) return;
 
         if (stateRef.current.status === 'paused') {
-          pausedAtRef.current = i;
+          pausedAtRef.current = chunk.startParagraphIndex;
           return;
         }
 
         setState((prev) => ({
           ...prev,
           status: 'playing',
-          currentParagraphIndex: i,
+          currentParagraphIndex: chunk.startParagraphIndex,
           currentWordIndex: -1,
         }));
 
         const result = await playBlob(blob, session);
         if (result === 'interrupted' || session !== sessionRef.current) return;
+
+        setState((prev) => ({
+          ...prev,
+          currentParagraphIndex: chunk.endParagraphIndex,
+        }));
+
+        if (ci + 1 < chunks.length) {
+          await audioChunkGap(40);
+        }
       }
 
       if (session !== sessionRef.current) return;
@@ -280,6 +327,17 @@ export function useServerTTS({
       onEndRef.current?.();
     },
     [fetchChunk, playBlob, prefetchChunk],
+  );
+
+  const speakFromParagraph = useCallback(
+    (startParagraphIndex: number, session: number) => {
+      const chunkIndex = findChunkIndexForParagraph(
+        playbackChunksRef.current,
+        startParagraphIndex,
+      );
+      return speakFromChunk(chunkIndex, session);
+    },
+    [speakFromChunk],
   );
 
   const play = useCallback(
@@ -300,9 +358,9 @@ export function useServerTTS({
         currentWordIndex: -1,
       }));
 
-      setTimeout(() => speakFrom(startIdx, session), 50);
+      setTimeout(() => speakFromParagraph(startIdx, session), 50);
     },
-    [enabled, speakFrom, stopAudio],
+    [enabled, speakFromParagraph, stopAudio],
   );
 
   const pause = useCallback(() => {
@@ -330,8 +388,8 @@ export function useServerTTS({
       currentWordIndex: -1,
     }));
 
-    setTimeout(() => speakFrom(resumeIdx, session), 50);
-  }, [enabled, speakFrom, stopAudio]);
+    setTimeout(() => speakFromParagraph(resumeIdx, session), 50);
+  }, [enabled, speakFromParagraph, stopAudio]);
 
   const stop = useCallback(() => {
     sessionRef.current += 1;
@@ -358,8 +416,14 @@ export function useServerTTS({
   }, [stopAudio]);
 
   const skipForward = useCallback(() => {
-    const nextIndex = stateRef.current.currentParagraphIndex + 1;
-    if (nextIndex >= paragraphsRef.current.length) return;
+    const chunks = playbackChunksRef.current;
+    const chunkIdx = findChunkIndexForParagraph(
+      chunks,
+      stateRef.current.currentParagraphIndex,
+    );
+    if (chunkIdx + 1 >= chunks.length) return;
+
+    const nextIndex = chunks[chunkIdx + 1].startParagraphIndex;
 
     const wasActive =
       stateRef.current.status === 'playing' ||
@@ -381,7 +445,15 @@ export function useServerTTS({
   }, [play, stopAudio]);
 
   const skipBackward = useCallback(() => {
-    const prevIndex = Math.max(0, stateRef.current.currentParagraphIndex - 1);
+    const chunks = playbackChunksRef.current;
+    const chunkIdx = findChunkIndexForParagraph(
+      chunks,
+      stateRef.current.currentParagraphIndex,
+    );
+    if (chunkIdx <= 0) return;
+
+    const prevIndex = chunks[chunkIdx - 1].startParagraphIndex;
+
     const wasActive =
       stateRef.current.status === 'playing' ||
       stateRef.current.status === 'buffering';
