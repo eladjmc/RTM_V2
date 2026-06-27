@@ -7,6 +7,8 @@ import {
   getCombinedDownload,
   deleteListenJob,
   buildHlsPlaylist,
+  listListenJobs,
+  clearListenJobCache,
 } from '../services/listen-job.service.js';
 
 /**
@@ -47,6 +49,13 @@ export const startListenJob = async (req: Request, res: Response): Promise<void>
     console.error('Start listen job failed:', err);
     res.status(500).json({ error: e.message || 'Failed to start listen job' });
   }
+};
+
+/**
+ * GET /tts/listen-jobs
+ */
+export const listListenJobsHandler = async (_req: Request, res: Response): Promise<void> => {
+  res.json({ jobs: listListenJobs() });
 };
 
 /**
@@ -100,7 +109,15 @@ export const downloadListenJobCombined = async (req: Request, res: Response): Pr
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${download.filename}"`);
   res.setHeader('Content-Length', stat.size);
-  res.sendFile(download.filePath);
+  res.sendFile(download.filePath, (err) => {
+    if (err) {
+      console.error('Combined download send failed:', err);
+      return;
+    }
+    deleteListenJob(jobId).catch((deleteErr) => {
+      console.error('Failed to clean up listen job after download:', deleteErr);
+    });
+  });
 };
 
 /**
@@ -120,6 +137,17 @@ export const getListenJobPlaylist = async (req: Request, res: Response): Promise
 
   res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
   res.send(playlist);
+};
+
+/**
+ * DELETE /tts/listen-jobs/cache
+ */
+export const clearListenJobCacheHandler = async (_req: Request, res: Response): Promise<void> => {
+  const result = await clearListenJobCache();
+  res.json({
+    message: 'Server cache cleared',
+    deletedJobs: result.deletedJobs,
+  });
 };
 
 /**

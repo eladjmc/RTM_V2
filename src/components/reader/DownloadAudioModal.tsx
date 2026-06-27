@@ -19,15 +19,16 @@ import {
   ToggleButtonGroup,
   ToggleButton,
 } from '@mui/material';
-import { Close, Download, Headphones } from '@mui/icons-material';
+import { Close, Download, Headphones, DeleteSweep, FolderOpen } from '@mui/icons-material';
 import type { ChapterSummary } from '../../types/models';
 import {
   ttsService,
   type TtsVoice,
   type TtsErrorResponse,
 } from '../../services/ttsService';
-import { listenJobService } from '../../services/listenJobService';
+import { listenJobService, type ListenJobSummary } from '../../services/listenJobService';
 import type { ListenOfflineJobConfig } from '../../hooks/useListenOfflineJob';
+import ServerCacheFilesModal from './ServerCacheFilesModal';
 
 interface DownloadAudioModalProps {
   open: boolean;
@@ -37,6 +38,7 @@ interface DownloadAudioModalProps {
   chapters: ChapterSummary[];
   currentChapterNumber: number;
   onListenOffline: (config: ListenOfflineJobConfig) => void;
+  onResumeListenJob: (job: ListenJobSummary) => void;
 }
 
 export default function DownloadAudioModal({
@@ -47,6 +49,7 @@ export default function DownloadAudioModal({
   chapters,
   currentChapterNumber,
   onListenOffline,
+  onResumeListenJob,
 }: DownloadAudioModalProps) {
   const [provider, setProvider] = useState<'edge' | 'sapi'>('sapi');
   const [startChapter, setStartChapter] = useState(currentChapterNumber);
@@ -61,6 +64,10 @@ export default function DownloadAudioModal({
   const [error, setError] = useState<string | null>(null);
   const [chapterErrors, setChapterErrors] = useState<TtsErrorResponse['chapters']>(undefined);
   const [success, setSuccess] = useState(false);
+  const [cacheBusy, setCacheBusy] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+  const [cacheFilesOpen, setCacheFilesOpen] = useState(false);
+  const [cacheClearedMessage, setCacheClearedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -195,7 +202,31 @@ export default function DownloadAudioModal({
     }
   };
 
+  const handleCleanServerCache = async () => {
+    const confirmed = window.confirm(
+      'Clear all temporary listen audio files from the server?\n\nIn-progress listen jobs will be stopped.',
+    );
+    if (!confirmed) return;
+
+    setCacheMessage(null);
+    setCacheBusy(true);
+    try {
+      const { deletedJobs } = await listenJobService.clearServerCache();
+      const msg =
+        deletedJobs > 0
+          ? `Cleared ${deletedJobs} job${deletedJobs !== 1 ? 's' : ''} from server cache.`
+          : 'Server cache was already empty.';
+      setCacheMessage(msg);
+      setCacheClearedMessage(msg);
+    } catch (err: unknown) {
+      setCacheMessage(err instanceof Error ? err.message : 'Failed to clear server cache');
+    } finally {
+      setCacheBusy(false);
+    }
+  };
+
   return (
+    <>
     <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         Audio
@@ -287,8 +318,36 @@ export default function DownloadAudioModal({
           )}
 
           {provider === 'sapi' && (
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                color="warning"
+                size="small"
+                fullWidth
+                startIcon={
+                  cacheBusy ? <CircularProgress size={16} color="inherit" /> : <DeleteSweep />
+                }
+                onClick={handleCleanServerCache}
+                disabled={busy || cacheBusy}
+              >
+                Clean server cache
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                fullWidth
+                startIcon={<FolderOpen />}
+                onClick={() => setCacheFilesOpen(true)}
+                disabled={busy}
+              >
+                Server files
+              </Button>
+            </Stack>
+          )}
+
+          {cacheMessage && (
             <Alert severity="info" sx={{ py: 0.5 }}>
-              Uses Microsoft Zira — a classic, clear desktop voice via Windows SAPI.
+              {cacheMessage}
             </Alert>
           )}
 
@@ -394,5 +453,15 @@ export default function DownloadAudioModal({
         </Button>
       </DialogActions>
     </Dialog>
+
+    <ServerCacheFilesModal
+      open={cacheFilesOpen}
+      onClose={() => setCacheFilesOpen(false)}
+      currentBookId={bookId}
+      onResumeJob={onResumeListenJob}
+      clearedMessage={cacheClearedMessage}
+      onClearMessageConsumed={() => setCacheClearedMessage(null)}
+    />
+    </>
   );
 }

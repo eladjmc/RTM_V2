@@ -134,6 +134,8 @@ router.post(
 router.post('/books/:bookId/download', ttsController.downloadAudio);
 
 router.post('/listen-jobs', listenJobController.startListenJob);
+router.get('/listen-jobs', listenJobController.listListenJobsHandler);
+router.delete('/listen-jobs/cache', listenJobController.clearListenJobCacheHandler);
 router.get('/listen-jobs/:jobId', listenJobController.getListenJob);
 router.get('/listen-jobs/:jobId/chapters/:chapterNumber', listenJobController.streamListenJobChapter);
 router.get('/listen-jobs/:jobId/download', listenJobController.downloadListenJobCombined);
