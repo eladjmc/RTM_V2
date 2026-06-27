@@ -41,7 +41,7 @@ export interface SynthesizeChunkParams {
 export interface TtsChunkCacheKeyParts {
   bookId: string;
   chapterId: string;
-  paragraphIndex: number;
+  chunkIndex: number;
   provider: TtsChunkProvider;
   voice: string;
   rate: number;
@@ -49,8 +49,8 @@ export interface TtsChunkCacheKeyParts {
 
 /** Stable cache key for IndexedDB chunk storage */
 export function buildTtsChunkCacheKey(parts: TtsChunkCacheKeyParts): string {
-  const { bookId, chapterId, paragraphIndex, provider, voice, rate } = parts;
-  return `${bookId}|${chapterId}|${paragraphIndex}|${provider}|${voice}|${rate.toFixed(2)}`;
+  const { bookId, chapterId, chunkIndex, provider, voice, rate } = parts;
+  return `${bookId}|${chapterId}|c${chunkIndex}|${provider}|${voice}|${rate.toFixed(2)}`;
 }
 
 export const ttsService = {

@@ -3,14 +3,20 @@
  * Waits for decode/buffer before play() to avoid clipping the start of MP3 blobs.
  */
 
+const CHUNK_GAP_MS = 40;
+
 export function prepareAudioElement(audio: HTMLAudioElement): void {
   audio.preload = 'auto';
   audio.setAttribute('playsinline', '');
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Resolve once enough data is buffered to play from the start reliably. */
 export function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
-  if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+  if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
     return Promise.resolve();
   }
 
@@ -18,6 +24,7 @@ export function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
     const cleanup = () => {
       audio.removeEventListener('loadeddata', onReady);
       audio.removeEventListener('canplay', onReady);
+      audio.removeEventListener('canplaythrough', onReady);
       audio.removeEventListener('error', onError);
     };
 
@@ -33,6 +40,7 @@ export function waitForAudioReady(audio: HTMLAudioElement): Promise<void> {
 
     audio.addEventListener('loadeddata', onReady, { once: true });
     audio.addEventListener('canplay', onReady, { once: true });
+    audio.addEventListener('canplaythrough', onReady, { once: true });
     audio.addEventListener('error', onError, { once: true });
   });
 }
@@ -54,3 +62,13 @@ export async function playAudioWhenReady(
 
   await audio.play();
 }
+
+/** Pause, reset element, brief gap — use before swapping blob URLs on the same element. */
+export async function resetAudioElement(audio: HTMLAudioElement): Promise<void> {
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+  await sleep(CHUNK_GAP_MS);
+}
+
+export { sleep as audioChunkGap };
