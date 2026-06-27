@@ -6,6 +6,7 @@ import {
   type TtsChunkProvider,
 } from '../services/ttsService';
 import { ttsChunkCache } from '../services/ttsChunkCache';
+import { playAudioWhenReady, prepareAudioElement } from '../utils/audioPlayback';
 import type { TTSState, TTSControls, PlaybackStatus } from './useTTS';
 
 export type { PlaybackStatus };
@@ -175,6 +176,7 @@ export function useServerTTS({
 
         const url = URL.createObjectURL(blob);
         const audio = audioRef.current ?? new Audio();
+        prepareAudioElement(audio);
         audioRef.current = audio;
         audio.volume = volumeRef.current;
         audio.src = url;
@@ -194,8 +196,7 @@ export function useServerTTS({
           resolve('ended');
         };
 
-        audio
-          .play()
+        playAudioWhenReady(audio, 0)
           .then(() => {
             if (session !== sessionRef.current) {
               audio.pause();

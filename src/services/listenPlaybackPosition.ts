@@ -1,5 +1,8 @@
 export interface ListenPlaybackPosition {
   bookId: string;
+  jobId: string;
+  startChapter: number;
+  endChapter: number;
   chapterNumber: number;
   currentTime: number;
   provider: string;
@@ -25,7 +28,11 @@ export function getListenPosition(
 ): ListenPlaybackPosition | null {
   try {
     const raw = localStorage.getItem(storageKey(bookId, provider, voice, rate));
-    return raw ? (JSON.parse(raw) as ListenPlaybackPosition) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ListenPlaybackPosition;
+    // Ignore legacy entries saved before job-scoped resume
+    if (!parsed.jobId) return null;
+    return parsed;
   } catch {
     return null;
   }
