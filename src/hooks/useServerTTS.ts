@@ -8,7 +8,9 @@ import {
 import { ttsChunkCache } from '../services/ttsChunkCache';
 import {
   buildTtsPlaybackChunks,
+  buildChunkParagraphCharRanges,
   findChunkIndexForParagraph,
+  paragraphIndexAtChunkProgress,
   type TtsPlaybackChunk,
 } from '../utils/ttsPlaybackChunks';
 import {
@@ -184,7 +186,11 @@ export function useServerTTS({
   );
 
   const playBlob = useCallback(
-    (blob: Blob, session: number): Promise<'ended' | 'interrupted'> =>
+    (
+      blob: Blob,
+      session: number,
+      chunk: TtsPlaybackChunk,
+    ): Promise<'ended' | 'interrupted'> =>
       new Promise((resolve) => {
         if (session !== sessionRef.current) {
           resolve('interrupted');
@@ -212,12 +218,34 @@ export function useServerTTS({
             }
           };
 
+          const paragraphRanges = buildChunkParagraphCharRanges(
+            chunk,
+            paragraphsRef.current,
+          );
+
+          const syncParagraphHighlight = () => {
+            if (session !== sessionRef.current) return;
+            const { duration, currentTime } = audio;
+            if (!duration || !Number.isFinite(duration)) return;
+
+            const paragraphIndex = paragraphIndexAtChunkProgress(
+              paragraphRanges,
+              currentTime / duration,
+            );
+
+            setState((prev) => {
+              if (prev.currentParagraphIndex === paragraphIndex) return prev;
+              return { ...prev, currentParagraphIndex: paragraphIndex };
+            });
+          };
+
           audio.volume = volumeRef.current;
           audio.src = url;
 
           const cleanup = () => {
             audio.onended = null;
             audio.onerror = null;
+            audio.removeEventListener('timeupdate', syncParagraphHighlight);
             revoke();
           };
 
@@ -230,13 +258,18 @@ export function useServerTTS({
             resolve('ended');
           };
 
+          audio.addEventListener('timeupdate', syncParagraphHighlight);
+
           try {
             await playAudioWhenReady(audio, 0);
             if (session !== sessionRef.current) {
               audio.pause();
               cleanup();
               resolve('interrupted');
+              return;
             }
+
+            syncParagraphHighlight();
           } catch {
             cleanup();
             resolve('interrupted');
@@ -303,7 +336,7 @@ export function useServerTTS({
           currentWordIndex: -1,
         }));
 
-        const result = await playBlob(blob, session);
+        const result = await playBlob(blob, session, chunk);
         if (result === 'interrupted' || session !== sessionRef.current) return;
 
         setState((prev) => ({
